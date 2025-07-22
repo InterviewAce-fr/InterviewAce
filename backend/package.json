@@ -1,0 +1,70 @@
+{
+  "name": "interviewace-backend",
+  "version": "1.0.0",
+  "description": "Backend API for InterviewAce - Interview Preparation Platform",
+  "main": "dist/server.js",
+  "scripts": {
+    "start": "node dist/server.js",
+    "dev": "nodemon src/server.ts",
+    "build": "tsc",
+    "postbuild": "cp -r src/templates dist/",
+    "worker": "node dist/worker.js",
+    "test": "jest",
+    "lint": "eslint src/**/*.ts",
+    "heroku-postbuild": "npm run build"
+  },
+  "engines": {
+    "node": "18.x",
+    "npm": "9.x"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "compression": "^1.7.4",
+    "express-rate-limit": "^7.1.5",
+    "dotenv": "^16.3.1",
+    "@supabase/supabase-js": "^2.52.0",
+    "puppeteer": "^21.6.1",
+    "handlebars": "^4.7.8",
+    "stripe": "^14.9.0",
+    "mailgun.js": "^9.4.1",
+    "form-data": "^4.0.0",
+    "bull": "^4.12.2",
+    "redis": "^4.6.12",
+    "multer": "^1.4.5-lts.1",
+    "pdf-parse": "^1.1.1",
+    "joi": "^17.11.0",
+    "jsonwebtoken": "^9.0.2",
+    "winston": "^3.11.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/compression": "^1.7.5",
+    "@types/multer": "^1.4.11",
+    "@types/bull": "^4.10.0",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/uuid": "^9.0.7",
+    "typescript": "^5.3.3",
+    "nodemon": "^3.0.2",
+    "ts-node": "^10.9.2",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "eslint": "^8.56.0",
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.11"
+  },
+  "keywords": [
+    "interview",
+    "preparation",
+    "api",
+    "pdf",
+    "stripe",
+    "supabase"
+  ],
+  "author": "InterviewAce Team",
+  "license": "MIT"
+}
