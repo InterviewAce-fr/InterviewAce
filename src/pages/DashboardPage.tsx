@@ -45,12 +45,25 @@ export default function DashboardPage() {
 
   const fetchPreparations = async () => {
     try {
-      const { data, error } = await supabase
-        .from('preparations')
-        .select('*')
-        .order('updated_at', { ascending: false });
-
-      if (error) throw error;
+      const { data: session } = await supabase.auth.getSession();
+      
+      if (!session.session?.access_token) {
+        throw new Error('Not authenticated');
+      }
+      
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${backendUrl}/api/preparations`, {
+        headers: {
+          'Authorization': `Bearer ${session.session.access_token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch preparations');
+      }
+      
+      const result = await response.json();
+      const data = result.preparations;
 
       setPreparations(data || []);
       
