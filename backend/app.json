@@ -28,8 +28,12 @@
       "value": "true"
     },
     "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": {
-      "description": "Skip Puppeteer Chromium download",
+      "description": "Skip Puppeteer Chromium download to prevent build timeouts",
       "value": "true"
+    },
+    "PUPPETEER_EXECUTABLE_PATH": {
+      "description": "Path to Chromium executable provided by buildpack",
+      "value": "/app/.chrome-for-testing/chrome-linux64/chrome"
     }
   },
   "formation": {
