@@ -17,12 +17,13 @@ export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 });
 
 // Test connection
-void supabase
-  .from('user_profiles')
-  .select('count', { count: 'exact', head: true })
-  .then(() => {
+(async () => {
+  try {
+    await supabase
+      .from('user_profiles')
+      .select('count', { count: 'exact', head: true });
     logger.info('🗄️  Supabase connected successfully');
-  })
-  .catch((error: any) => {
+  } catch (error: any) {
     logger.error('Supabase connection failed:', error);
-  });
+  }
+})();
