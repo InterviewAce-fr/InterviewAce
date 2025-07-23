@@ -3,6 +3,12 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { supabase } from '../utils/supabase';
 import { logger } from '../utils/logger';
 
+interface Preparation {
+  id: string;
+  is_complete: boolean;
+  created_at: string;
+}
+
 const router = express.Router();
 
 // Get user profile
@@ -84,8 +90,8 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
 
     const stats = {
       totalPreparations: preparations?.length || 0,
-      completedPreparations: preparations?.filter(p => p.is_complete).length || 0,
-      preparationsThisMonth: preparations?.filter(p => {
+      completedPreparations: preparations?.filter((p: Preparation) => p.is_complete).length || 0,
+      preparationsThisMonth: preparations?.filter((p: Preparation) => {
         const createdAt = new Date(p.created_at);
         const now = new Date();
         return createdAt.getMonth() === now.getMonth() && 
