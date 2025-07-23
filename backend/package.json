@@ -10,7 +10,8 @@
     "postbuild": "cp -r src/templates dist/templates",
     "worker": "node dist/worker.js",
     "test": "jest",
-    "heroku-postbuild": "npm run build && npm run postbuild"
+    "heroku-postbuild": "npm run build && npm run postbuild",
+    "heroku-cleanup": "npm prune --production"
   },
   "engines": {
     "node": "18.x"
