@@ -7,17 +7,24 @@ import { logger } from '../utils/logger';
 
 const router = express.Router();
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('STRIPE_SECRET_KEY is required');
-}
+// Only initialize Stripe if the secret key is provided
+let stripe: Stripe | null = null;
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2023-10-16'
-});
+if (process.env.STRIPE_SECRET_KEY) {
+  stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2023-10-16'
+  });
+} else {
+  logger.warn('Stripe not configured - payment features will be disabled');
+}
 
 // Create checkout session for premium upgrade
 router.post('/create-checkout-session', authenticateToken, async (req: AuthRequest, res) => {
   try {
+    if (!stripe) {
+      return res.status(503).json({ error: 'Payment processing not available' });
+    }
+
     const userId = req.user!.id;
     const userEmail = req.user!.email;
 
@@ -48,6 +55,10 @@ router.post('/create-checkout-session', authenticateToken, async (req: AuthReque
 
 // Stripe webhook handler
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (!stripe) {
+    return res.status(503).json({ error: 'Payment processing not available' });
+  }
+
   const sig = req.headers['stripe-signature'] as string;
   let event: Stripe.Event;
 
@@ -116,6 +127,10 @@ async function handleSuccessfulPayment(session: Stripe.Checkout.Session) {
 // Get customer portal session (for managing subscription)
 router.post('/create-portal-session', authenticateToken, async (req: AuthRequest, res) => {
   try {
+    if (!stripe) {
+      return res.status(503).json({ error: 'Payment processing not available' });
+    }
+
     const userEmail = req.user!.email;
 
     // Find customer by email
