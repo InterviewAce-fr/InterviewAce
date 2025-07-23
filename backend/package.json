@@ -9,7 +9,7 @@
     "build": "tsc",
     "worker": "node dist/worker.js",
     "test": "jest",
-    "heroku-postbuild": "npm run build && cp -r src/templates dist/templates"
+    "heroku-postbuild": "npm run build && cp -r src/templates dist/templates && echo 'Build completed successfully'"
   },
   "engines": {
     "node": "18.x",

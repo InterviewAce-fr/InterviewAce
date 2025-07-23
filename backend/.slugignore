@@ -15,5 +15,6 @@ README.md
 logs/
 .DS_Store
 Thumbs.db
-node_modules/
-*.ts
+# Keep src/ and tsconfig.json for build, they'll be cleaned up after
+# src/ - REMOVED from slugignore so it's available for build
+# tsconfig.json - REMOVED from slugignore so it's available for build
