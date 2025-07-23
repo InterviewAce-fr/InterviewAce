@@ -12,7 +12,8 @@
     "heroku-postbuild": "npm run build && cp -r src/templates dist/templates"
   },
   "engines": {
-    "node": "18.x"
+    "node": "18.x",
+    "npm": "9.x"
   },
   "dependencies": {
     "express": "^4.18.2",

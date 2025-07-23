@@ -23,10 +23,6 @@
       "description": "Node environment",
       "value": "production"
     },
-    "NPM_CONFIG_PRODUCTION": {
-      "description": "Skip dev dependencies",
-      "value": "true"
-    },
     "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": {
       "description": "Skip Puppeteer Chromium download to prevent build timeouts",
       "value": "true"
