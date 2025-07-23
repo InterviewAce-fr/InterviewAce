@@ -7,9 +7,10 @@
     "start": "node dist/server.js",
     "dev": "nodemon src/server.ts",
     "build": "tsc",
-    "postbuild": "xcopy /E /I src\\templates dist\\templates",
+    "postbuild": "node -e \"require('fs').cpSync('src/templates', 'dist/templates', {recursive: true})\"",
     "worker": "node dist/worker.js",
-    "test": "jest"
+    "test": "jest",
+    "heroku-postbuild": "npm run build"
   },
   "engines": {
     "node": "18.x",
