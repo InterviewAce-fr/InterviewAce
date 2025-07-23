@@ -5,8 +5,15 @@ let redisClient: any = null;
 
 export async function initializeRedis() {
   try {
+    const redisUrl = process.env.REDIS_URL || process.env.REDISCLOUD_URL || 'redis://localhost:6379';
+    
+    if (!process.env.REDIS_URL && !process.env.REDISCLOUD_URL) {
+      logger.warn('Redis not configured - background jobs will be disabled');
+      return null;
+    }
+    
     redisClient = createClient({
-      url: process.env.REDIS_URL || 'redis://localhost:6379'
+      url: redisUrl
     });
 
     redisClient.on('error', (err: Error) => {
@@ -20,8 +27,8 @@ export async function initializeRedis() {
     await redisClient.connect();
     return redisClient;
   } catch (error) {
-    logger.error('Failed to initialize Redis:', error);
-    throw error;
+    logger.warn('Failed to initialize Redis - background jobs disabled:', error);
+    return null;
   }
 }
 

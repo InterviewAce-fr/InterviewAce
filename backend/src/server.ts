@@ -93,7 +93,10 @@ app.use(errorHandler);
 async function startServer() {
   try {
     // Initialize Redis connection
-    await initializeRedis();
+    const redis = await initializeRedis();
+    if (!redis) {
+      logger.warn('⚠️  Starting without Redis - background jobs disabled');
+    }
     
     server.listen(PORT, () => {
       logger.info(`🚀 Server running on port ${PORT}`);
