@@ -9,8 +9,7 @@
     "build": "tsc",
     "postbuild": "cp -r src/templates dist/",
     "worker": "node dist/worker.js",
-    "test": "jest",
-    "lint": "eslint src/**/*.ts"
+    "test": "jest"
   },
   "engines": {
     "node": "18.x",
