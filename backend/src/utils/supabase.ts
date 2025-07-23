@@ -4,11 +4,14 @@ import { logger } from './logger';
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
+// Declare supabase at top level to ensure it's always exported
+let supabase: any;
+
 if (!supabaseUrl || !supabaseServiceKey) {
   logger.warn('Missing Supabase configuration - some features will be disabled');
   
   // Create a mock client when Supabase is not configured
-  export const supabase = {
+  supabase = {
     from: () => ({
       select: () => ({ eq: () => ({ single: async () => ({ data: null, error: { code: 'SUPABASE_NOT_CONFIGURED' } }) }) }),
       insert: () => ({ select: () => ({ single: async () => ({ data: null, error: { message: 'Supabase not configured' } }) }) }),
@@ -27,7 +30,7 @@ if (!supabaseUrl || !supabaseServiceKey) {
     }
   };
 } else {
-  export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  supabase = createClient(supabaseUrl, supabaseServiceKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
@@ -46,3 +49,6 @@ if (!supabaseUrl || !supabaseServiceKey) {
     }
   })();
 }
+
+// Export at top level outside conditional blocks
+export { supabase };
