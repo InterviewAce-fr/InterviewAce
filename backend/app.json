@@ -30,6 +30,10 @@
     "PUPPETEER_EXECUTABLE_PATH": {
       "description": "Path to Chromium executable provided by buildpack",
       "value": "/app/.chrome-for-testing/chrome-linux64/chrome"
+    },
+    "NPM_CONFIG_LOGLEVEL": {
+      "description": "Reduce npm log verbosity to speed up builds",
+      "value": "warn"
     }
   },
   "formation": {
