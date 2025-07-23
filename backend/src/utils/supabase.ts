@@ -17,7 +17,7 @@ export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 });
 
 // Test connection
-supabase
+void supabase
   .from('user_profiles')
   .select('count', { count: 'exact', head: true })
   .then(() => {
