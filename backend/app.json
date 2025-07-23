@@ -31,9 +31,17 @@
       "description": "Path to Chromium executable provided by buildpack",
       "value": "/app/.chrome-for-testing/chrome-linux64/chrome"
     },
+    "YARN": {
+      "description": "Use npm instead of yarn",
+      "value": "false"
+    },
     "NPM_CONFIG_LOGLEVEL": {
       "description": "Reduce npm log verbosity to speed up builds",
       "value": "warn"
+    },
+    "NODE_OPTIONS": {
+      "description": "Increase memory limit for build",
+      "value": "--max-old-space-size=4096"
     }
   },
   "formation": {
