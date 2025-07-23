@@ -16,6 +16,4 @@ logs/
 .DS_Store
 Thumbs.db
 node_modules/
-src/
 *.ts
-tsconfig.json
