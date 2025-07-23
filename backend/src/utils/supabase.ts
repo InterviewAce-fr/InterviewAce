@@ -23,6 +23,6 @@ supabase
   .then(() => {
     logger.info('🗄️  Supabase connected successfully');
   })
-  .catch((error) => {
+  .catch((error: any) => {
     logger.error('Supabase connection failed:', error);
   });
