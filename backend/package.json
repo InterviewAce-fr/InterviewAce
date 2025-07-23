@@ -10,8 +10,7 @@
     "postbuild": "cp -r src/templates dist/",
     "worker": "node dist/worker.js",
     "test": "jest",
-    "lint": "eslint src/**/*.ts",
-    "heroku-postbuild": "npm run build"
+    "lint": "eslint src/**/*.ts"
   },
   "engines": {
     "node": "18.x",
