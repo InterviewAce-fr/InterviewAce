@@ -6,10 +6,10 @@
   "scripts": {
     "start": "node dist/server.js",
     "dev": "nodemon src/server.ts",
-    "build": "tsc",
+    "build": "echo 'PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=' $PUPPETEER_SKIP_CHROMIUM_DOWNLOAD && tsc",
     "worker": "node dist/worker.js",
     "test": "jest",
-    "heroku-postbuild": "npm run build && cp -r src/templates dist/templates"
+    "heroku-postbuild": "echo 'Starting build with PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=' $PUPPETEER_SKIP_CHROMIUM_DOWNLOAD && npm run build && cp -r src/templates dist/templates"
   },
   "engines": {
     "node": "18.x",
