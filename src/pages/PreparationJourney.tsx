@@ -107,14 +107,29 @@ export default function PreparationJourney() {
         
         if (error) throw error;
       } else {
-        // Create new preparation
-        const { data: newPrep, error } = await supabase
-          .from('preparations')
-          .insert([dataToSave])
-          .select()
-          .single();
+        // Create new preparation via backend API
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+        const { data: session } = await supabase.auth.getSession();
         
-        if (error) throw error;
+        if (!session.session?.access_token) {
+          throw new Error('Not authenticated');
+        }
+        
+        const response = await fetch(`${backendUrl}/api/preparations`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.session.access_token}`
+          },
+          body: JSON.stringify(dataToSave)
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to create preparation');
+        }
+        
+        const newPrep = await response.json();
         
         if (newPrep) {
           navigate(`/preparation/${newPrep.id}`, { replace: true });
