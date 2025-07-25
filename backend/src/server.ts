@@ -34,11 +34,17 @@ app.use(helmet({
 
 // CORS configuration
 app.use(cors({
-  origin: [
-    process.env.FRONTEND_URL || 'http://localhost:5173',
-    /\.webcontainer-api\.io$/,
-    /localhost:\d+$/
-  ],
+  origin: (origin, callback) => {
+    if (
+      !origin ||                             // permet les outils comme curl
+      origin.includes('localhost') ||        // permet le développement local
+      origin.endsWith('.webcontainer-api.io') // permet tous les previews Bolt New
+    ) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
