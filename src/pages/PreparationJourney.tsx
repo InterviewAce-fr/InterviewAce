@@ -146,7 +146,7 @@ export default function PreparationJourney() {
       toast.success('Progress saved successfully');
     } catch (error) {
       console.error('Error saving preparation:', error);
-      toast.error('Failed to save progress');
+      toast.error(error instanceof Error ? error.message : 'Failed to save progress');
     } finally {
       setSaving(false);
     }
