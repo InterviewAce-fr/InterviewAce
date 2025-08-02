@@ -14,7 +14,7 @@ export interface AuthRequest extends Request {
 // Create Supabase client for database operations
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_KEY!
 );
 
 export async function authenticateToken(req: AuthRequest, res: Response, next: NextFunction) {
