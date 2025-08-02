@@ -30,7 +30,7 @@ interface Preparation {
 }
 
 export default function DashboardPage() {
-  const { profile, refreshProfile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const [preparations, setPreparations] = useState<Preparation[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -45,31 +45,36 @@ export default function DashboardPage() {
 
   const fetchPreparations = async () => {
     try {
-      const { data: session } = await supabase.auth.getSession();
-      
-      if (!session.session?.access_token) {
-        throw new Error('Not authenticated');
+      if (!user) {
+        console.error('User not authenticated');
+        return;
       }
       
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
-      const response = await fetch(`${backendUrl}/api/preparations`, {
-        headers: {
-          'Authorization': `Bearer ${session.session.access_token}`
-        }
-      });
+      console.log('Fetching preparations for user:', user.id);
       
-      if (!response.ok) {
-        throw new Error('Failed to fetch preparations');
+      const { data, error } = await supabase
+        .from('preparations')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false });
+      
+      if (error) {
+        console.error('Supabase error:', error);
+        throw new Error(`Failed to fetch preparations: ${error.message}`);
       }
       
-      const result = await response.json();
-      const data = result.preparations;
+      if (data === null) {
+        console.error('Data is null - this might indicate a permissions issue');
+        throw new Error('No data returned from Supabase');
+      }
+      
+      console.log('Fetched preparations:', data);
 
-      setPreparations(data || []);
+      setPreparations(data);
       
       // Calculate stats
-      const total = data?.length || 0;
-      const completed = data?.filter(p => p.is_complete).length || 0;
+      const total = data.length;
+      const completed = data.filter(p => p.is_complete).length;
       
       setStats({
         totalPreparations: total,
