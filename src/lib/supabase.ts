@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://vkwuhfatwvevsxwupzdj.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZrd3VoZmF0d3ZldnN4d3VwemRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMxMTM5NzQsImV4cCI6MjA2ODY4OTk3NH0.M7klQcxlrktcSKeqFN8LX61ndAuOVwB-il4QpgRuwTs';
+
+console.log('Supabase URL:', supabaseUrl);
+console.log('Supabase Anon Key (first 20 chars):', supabaseAnonKey?.substring(0, 20) + '...');
 
 // Check if Supabase is properly configured
 const isSupabaseConfigured = supabaseUrl && supabaseAnonKey && 

@@ -60,12 +60,22 @@ export default function DashboardPage() {
       
       if (error) {
         console.error('Supabase error:', error);
+        console.log('Full Supabase error object:', error);
         throw new Error(`Failed to fetch preparations: ${error.message}`);
       }
       
+      console.log('Supabase response data:', data);
+      console.log('Supabase response error:', error);
+      
       if (data === null) {
-        console.error('Data is null - this might indicate a permissions issue');
-        throw new Error('No data returned from Supabase');
+        console.warn('Data is null - no preparations found or permissions issue');
+        setPreparations([]);
+        setStats({
+          totalPreparations: 0,
+          completedPreparations: 0,
+          averageCompletionTime: 0
+        });
+        return;
       }
       
       console.log('Fetched preparations:', data);

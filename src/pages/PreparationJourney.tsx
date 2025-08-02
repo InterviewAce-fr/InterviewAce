@@ -134,6 +134,12 @@ export default function PreparationJourney() {
         if (newPrep) {
           navigate(`/preparation/${newPrep.id}`, { replace: true });
           setPreparationData(prev => ({ ...prev, id: newPrep.id }));
+        
+        // Handle specific error codes
+        if (errorData.code === 'PREPARATION_LIMIT_REACHED') {
+          throw new Error('You have reached the free plan limit of 1 preparation. Please upgrade to Premium to create more preparations.');
+        } else {
+          throw new Error(errorData.message || 'Failed to create preparation');
         }
       }
       
