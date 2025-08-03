@@ -76,15 +76,16 @@ export default function PreparationJourney() {
       const { data, error } = await supabase
         .from('preparations')
         .select('*')
-        .eq('id', id)
-        .single();
-
-      if (error) throw error;
-      if (data) {
-        setPreparationData(data);
-      }
-    } catch (error) {
-      console.error('Error fetching preparation:', error);
+          user_id: user.id,
+          title: preparationData.title,
+          job_url: preparationData.job_url || '',
+          step_1_data: preparationData.step_1_data || {},
+          step_2_data: preparationData.step_2_data || {},
+          step_3_data: preparationData.step_3_data || {},
+          step_4_data: preparationData.step_4_data || {},
+          step_5_data: preparationData.step_5_data || {},
+          step_6_data: preparationData.step_6_data || {},
+          is_complete: preparationData.is_complete || false
       toast.error('Failed to load preparation');
       navigate('/dashboard');
     } finally {
@@ -140,6 +141,7 @@ export default function PreparationJourney() {
         if (newPrep) {
           navigate(`/preparation/${newPrep.id}`, { replace: true });
           setPreparationData(prev => ({ ...prev, id: newPrep.id }));
+        console.error('Supabase insert error:', error);
         }
       }
       

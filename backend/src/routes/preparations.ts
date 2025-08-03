@@ -121,7 +121,8 @@ router.post('/',
 
     } catch (error) {
       logger.error('Create preparation error:', error);
-      res.status(500).json({ error: 'Failed to create preparation' });
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create preparation';
+      res.status(500).json({ error: errorMessage });
     }
   }
 );
