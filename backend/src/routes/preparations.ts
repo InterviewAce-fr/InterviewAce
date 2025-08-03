@@ -9,7 +9,7 @@ const router = express.Router();
 
 // Validation schemas
 const createPreparationSchema = Joi.object({
-  title: Joi.string().required(),
+  title: Joi.string().min(1).required(),
   job_url: Joi.string().uri().allow(''),
   step_1_data: Joi.object().default({}),
   step_2_data: Joi.object().default({}),
@@ -20,7 +20,7 @@ const createPreparationSchema = Joi.object({
 });
 
 const updatePreparationSchema = Joi.object({
-  title: Joi.string(),
+  title: Joi.string().min(1),
   job_url: Joi.string().uri().allow(''),
   step_1_data: Joi.object(),
   step_2_data: Joi.object(),
