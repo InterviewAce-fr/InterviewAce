@@ -103,7 +103,15 @@ export default function PreparationJourney() {
     setSaving(true);
     
     try {
-      const dataToSave = data || preparationData;
+      let dataToSave = data || preparationData;
+      
+      // Ensure we have a valid title before saving
+      if (!dataToSave.title || dataToSave.title.trim() === '') {
+        dataToSave = {
+          ...dataToSave,
+          title: 'New Interview Preparation'
+        };
+      }
       
       if (id) {
         // Update existing preparation
