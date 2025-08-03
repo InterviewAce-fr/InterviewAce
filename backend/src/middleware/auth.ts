@@ -21,6 +21,9 @@ export async function authenticateToken(req: AuthRequest, res: Response, next: N
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
+  console.log('Auth header:', authHeader ? 'Bearer ***' : 'Missing');
+  console.log('Token exists:', !!token);
+
   if (!token) {
     return res.status(401).json({ error: 'Access token required' });
   }
@@ -33,6 +36,8 @@ export async function authenticateToken(req: AuthRequest, res: Response, next: N
     }
 
     const decoded = jwt.verify(token, jwtSecret) as any;
+    console.log('Decoded token payload:', { sub: decoded.sub, email: decoded.email });
+    
     const userId = decoded.sub;
     const email = decoded.email;
 
@@ -47,15 +52,18 @@ export async function authenticateToken(req: AuthRequest, res: Response, next: N
       .eq('id', userId)
       .single();
 
+    console.log('User profile:', profile);
     req.user = {
       id: userId,
       email: email || '',
       is_premium: profile?.is_premium || false
     };
 
+    console.log('Authenticated user:', req.user);
     next();
   } catch (error) {
     logger.error('Authentication error:', error);
+    console.error('JWT verification failed:', error);
     return res.status(403).json({ error: 'Invalid token' });
   }
 }

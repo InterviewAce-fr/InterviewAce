@@ -123,6 +123,11 @@ export default function PreparationJourney() {
           throw new Error('Not authenticated');
         }
         
+        // Log the request details for debugging
+        console.log('Creating preparation with data:', dataToSave);
+        console.log('Backend URL:', `${backendUrl}/api/preparations`);
+        console.log('Auth token exists:', !!session.session.access_token);
+        
         const response = await fetch(`${backendUrl}/api/preparations`, {
           method: 'POST',
           headers: {
@@ -135,6 +140,8 @@ export default function PreparationJourney() {
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
           console.error('Backend response error:', errorData);
+          console.error('Response status:', response.status);
+          console.error('Response headers:', Object.fromEntries(response.headers.entries()));
           
           // Handle specific error codes
           if (errorData.code === 'PREPARATION_LIMIT_REACHED') {

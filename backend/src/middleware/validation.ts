@@ -3,9 +3,12 @@ import Joi from 'joi';
 
 export function validateBody(schema: Joi.ObjectSchema) {
   return (req: Request, res: Response, next: NextFunction) => {
+    console.log('Validating request body:', req.body);
+    
     const { error } = schema.validate(req.body);
     
     if (error) {
+      console.error('Validation error:', error.details);
       return res.status(400).json({
         error: 'Validation failed',
         details: error.details.map(detail => ({

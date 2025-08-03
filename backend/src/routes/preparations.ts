@@ -86,6 +86,10 @@ router.post('/',
   validateBody(createPreparationSchema),
   async (req: AuthRequest, res) => {
     try {
+      // Log incoming request for debugging
+      console.log('POST /api/preparations - Request body:', req.body);
+      console.log('POST /api/preparations - User:', req.user);
+      
       const userId = req.user!.id;
       const isPremium = req.user!.is_premium;
 
@@ -109,6 +113,8 @@ router.post('/',
         user_id: userId
       };
 
+      console.log('Inserting preparation data:', preparationData);
+
       const { data, error } = await supabase
         .from('preparations')
         .insert([preparationData])
@@ -121,6 +127,7 @@ router.post('/',
 
     } catch (error) {
       logger.error('Create preparation error:', error);
+      console.error('Detailed error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to create preparation';
       res.status(500).json({ error: errorMessage });
     }
