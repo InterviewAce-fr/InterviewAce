@@ -1,195 +1,259 @@
-import express from 'express';
-import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { validateBody } from '../middleware/validation';
-import { supabase } from '../utils/supabase';
-import { logger } from '../utils/logger';
-import Joi from 'joi';
-
-const router = express.Router();
-
-// Validation schemas
-const createPreparationSchema = Joi.object({
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 import Step1JobAnalysis from '../components/preparation/Step1JobAnalysis';
 import Step2BusinessModel from '../components/preparation/Step2BusinessModel';
 import Step3SWOT from '../components/preparation/Step3SWOT';
 import Step4Profile from '../components/preparation/Step4Profile';
 import Step5WhyQuestions from '../components/preparation/Step5WhyQuestions';
 import Step6Questions from '../components/preparation/Step6Questions';
-  step_5_data: Joi.object().default({}),
-  step_6_data: Joi.object().default({})
-});
+import { ChevronLeft, ChevronRight, Save } from 'lucide-react';
 
-const updatePreparationSchema = Joi.object({
-  title: Joi.string(),
-  job_url: Joi.string().uri().allow(''),
-  step_1_data: Joi.object(),
-  step_2_data: Joi.object(),
-  step_3_data: Joi.object(),
-  step_4_data: Joi.object(),
-  step_5_data: Joi.object(),
-  step_6_data: Joi.object(),
-  is_complete: Joi.boolean()
-});
+interface Preparation {
+  id: string;
+  user_id: string;
+  title: string;
+  job_url: string;
+  created_at: string;
+  updated_at: string;
+  is_complete: boolean;
+  step_1_data: any;
+  step_2_data: any;
+  step_3_data: any;
+  step_4_data: any;
+  step_5_data: any;
+  step_6_data: any;
+}
 
-// Get all preparations for user
-router.get('/', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const userId = req.user!.id;
+const PreparationJourney: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [currentStep, setCurrentStep] = useState(1);
+  const [preparation, setPreparation] = useState<Preparation | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-    const { data, error } = await supabase
-      .from('preparations')
-      .select('*')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false });
+  const steps = [
+    { number: 1, title: 'Job Analysis', component: Step1JobAnalysis },
+    { number: 2, title: 'Business Model', component: Step2BusinessModel },
+    { number: 3, title: 'SWOT Analysis', component: Step3SWOT },
+    { number: 4, title: 'Profile', component: Step4Profile },
+    { number: 5, title: 'Why Questions', component: Step5WhyQuestions },
+    { number: 6, title: 'Questions', component: Step6Questions },
+  ];
 
-    if (error) throw error;
-
-    res.json({ preparations: data || [] });
-
-  } catch (error) {
-    logger.error('Get preparations error:', error);
-    res.status(500).json({ error: 'Failed to fetch preparations' });
-  }
-});
-
-// Get single preparation
-router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
-
-    const { data, error } = await supabase
-      .from('preparations')
-      .select('*')
-      .eq('id', id)
-      .eq('user_id', userId)
-      .single();
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return res.status(404).json({ error: 'Preparation not found' });
-      }
-      throw error;
+  useEffect(() => {
+    if (id) {
+      loadPreparation();
+    } else {
+      createNewPreparation();
     }
+  }, [id]);
 
-    res.json({ preparation: data });
-
-  } catch (error) {
-    logger.error('Get preparation error:', error);
-    res.status(500).json({ error: 'Failed to fetch preparation' });
-  }
-});
-
-// Create new preparation
-router.post('/', 
-  authenticateToken,
-  validateBody(createPreparationSchema),
-  async (req: AuthRequest, res) => {
+  const loadPreparation = async () => {
     try {
-      // Log incoming request for debugging
-      console.log('POST /api/preparations - Request body:', req.body);
-      console.log('POST /api/preparations - User:', req.user);
-      
-      const userId = req.user!.id;
-      const isPremium = req.user!.is_premium;
-
-      // Check if user has reached preparation limit (free users: 1, premium: unlimited)
-      if (!isPremium) {
-        const { count } = await supabase
-          .from('preparations')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', userId);
-
-        if (count && count >= 1) {
-          return res.status(403).json({
-            error: 'Free users can only create 1 preparation. Upgrade to Premium for unlimited preparations.',
-            code: 'PREPARATION_LIMIT_REACHED'
-          });
-        }
-      }
-
-      const preparationData = {
-        ...req.body,
-        user_id: userId
-      };
-
-      console.log('Inserting preparation data:', preparationData);
-
       const { data, error } = await supabase
         .from('preparations')
-        .insert([preparationData])
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', user?.id)
+        .single();
+
+      if (error) throw error;
+      setPreparation(data);
+    } catch (error) {
+      console.error('Error loading preparation:', error);
+      navigate('/dashboard');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createNewPreparation = async () => {
+    try {
+      const title = 'New Interview Preparation';
+      
+      const { data, error } = await supabase
+        .from('preparations')
+        .insert([{
+          user_id: user?.id,
+          title,
+          job_url: '',
+          step_1_data: {},
+          step_2_data: {},
+          step_3_data: {},
+          step_4_data: {},
+          step_5_data: {},
+          step_6_data: {}
+        }])
         .select()
         .single();
 
       if (error) throw error;
-
-      res.status(201).json({ preparation: data });
-
+      setPreparation(data);
+      navigate(`/preparation/${data.id}`, { replace: true });
     } catch (error) {
-      logger.error('Create preparation error:', error);
-      console.error('Detailed error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create preparation';
-      res.status(500).json({ error: errorMessage });
+      console.error('Error creating preparation:', error);
+      navigate('/dashboard');
+    } finally {
+      setLoading(false);
     }
-  }
-);
+  };
 
-// Update preparation
-router.put('/:id',
-  authenticateToken,
-  validateBody(updatePreparationSchema),
-  async (req: AuthRequest, res) => {
+  const savePreparation = async (stepData: any, stepNumber: number) => {
+    if (!preparation) return;
+
+    setSaving(true);
     try {
-      const { id } = req.params;
-      const userId = req.user!.id;
+      const stepKey = `step_${stepNumber}_data`;
+      const updates = {
+        [stepKey]: stepData,
+        updated_at: new Date().toISOString()
+      };
 
       const { data, error } = await supabase
         .from('preparations')
-        .update({
-          ...req.body,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .eq('user_id', userId)
+        .update(updates)
+        .eq('id', preparation.id)
+        .eq('user_id', user?.id)
         .select()
         .single();
 
-      if (error) {
-        if (error.code === 'PGRST116') {
-          return res.status(404).json({ error: 'Preparation not found' });
-        }
-        throw error;
-      }
-
-      res.json({ preparation: data });
-
+      if (error) throw error;
+      setPreparation(data);
     } catch (error) {
-      logger.error('Update preparation error:', error);
-      res.status(500).json({ error: 'Failed to update preparation' });
+      console.error('Error saving preparation:', error);
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const nextStep = () => {
+    if (currentStep < steps.length) {
+      setCurrentStep(currentStep + 1);
+    }
+  };
+
+  const prevStep = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading preparation...</p>
+        </div>
+      </div>
+    );
   }
-);
 
-// Delete preparation
-router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
-
-    const { error } = await supabase
-      .from('preparations')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
-
-    if (error) throw error;
-
-    res.json({ message: 'Preparation deleted successfully' });
-
-  } catch (error) {
-    logger.error('Delete preparation error:', error);
-    res.status(500).json({ error: 'Failed to delete preparation' });
+  if (!preparation) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600">Preparation not found</p>
+        </div>
+      </div>
+    );
   }
-});
 
-export default router;
+  const CurrentStepComponent = steps[currentStep - 1].component;
+  const stepDataKey = `step_${currentStep}_data` as keyof Preparation;
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-2xl font-bold text-gray-900">{preparation.title}</h1>
+            {saving && (
+              <div className="flex items-center text-indigo-600">
+                <Save className="w-4 h-4 mr-2 animate-pulse" />
+                <span className="text-sm">Saving...</span>
+              </div>
+            )}
+          </div>
+          
+          {/* Progress bar */}
+          <div className="flex items-center space-x-2">
+            {steps.map((step, index) => (
+              <React.Fragment key={step.number}>
+                <div
+                  className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${
+                    step.number === currentStep
+                      ? 'bg-indigo-600 text-white'
+                      : step.number < currentStep
+                      ? 'bg-green-500 text-white'
+                      : 'bg-gray-200 text-gray-600'
+                  }`}
+                >
+                  {step.number}
+                </div>
+                {index < steps.length - 1 && (
+                  <div
+                    className={`flex-1 h-1 rounded ${
+                      step.number < currentStep ? 'bg-green-500' : 'bg-gray-200'
+                    }`}
+                  />
+                )}
+              </React.Fragment>
+            ))}
+          </div>
+          
+          <div className="mt-2">
+            <p className="text-sm text-gray-600">
+              Step {currentStep} of {steps.length}: {steps[currentStep - 1].title}
+            </p>
+          </div>
+        </div>
+
+        {/* Step Content */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <CurrentStepComponent
+            data={preparation[stepDataKey] || {}}
+            onSave={(data: any) => savePreparation(data, currentStep)}
+            preparation={preparation}
+          />
+        </div>
+
+        {/* Navigation */}
+        <div className="flex justify-between">
+          <button
+            onClick={prevStep}
+            disabled={currentStep === 1}
+            className={`flex items-center px-4 py-2 rounded-lg font-medium ${
+              currentStep === 1
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            <ChevronLeft className="w-4 h-4 mr-2" />
+            Previous
+          </button>
+
+          <button
+            onClick={nextStep}
+            disabled={currentStep === steps.length}
+            className={`flex items-center px-4 py-2 rounded-lg font-medium ${
+              currentStep === steps.length
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+            }`}
+          >
+            Next
+            <ChevronRight className="w-4 h-4 ml-2" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default PreparationJourney;
