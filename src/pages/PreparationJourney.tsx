@@ -46,7 +46,7 @@ const STEPS = [
 export default function PreparationJourney() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -76,16 +76,22 @@ export default function PreparationJourney() {
       const { data, error } = await supabase
         .from('preparations')
         .select('*')
-          user_id: user.id,
-          title: preparationData.title,
-          job_url: preparationData.job_url || '',
-          step_1_data: preparationData.step_1_data || {},
-          step_2_data: preparationData.step_2_data || {},
-          step_3_data: preparationData.step_3_data || {},
-          step_4_data: preparationData.step_4_data || {},
-          step_5_data: preparationData.step_5_data || {},
-          step_6_data: preparationData.step_6_data || {},
-          is_complete: preparationData.is_complete || false
+        .eq('id', id)
+        .eq('user_id', user?.id)
+        .single();
+      
+      if (error) {
+        console.error('Supabase fetch error:', error);
+        toast.error('Failed to load preparation');
+        navigate('/dashboard');
+        return;
+      }
+      
+      if (data) {
+        setPreparationData(data);
+      }
+    } catch (error) {
+      console.error('Error fetching preparation:', error);
       toast.error('Failed to load preparation');
       navigate('/dashboard');
     } finally {
