@@ -132,7 +132,8 @@ export default function PreparationJourney() {
         });
         
         if (!response.ok) {
-          const errorData = await response.json();
+          const errorData = await response.json().catch(() => ({}));
+          console.error('Backend response error:', errorData);
           
           // Handle specific error codes
           if (errorData.code === 'PREPARATION_LIMIT_REACHED') {
