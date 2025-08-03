@@ -115,7 +115,8 @@ export default function PreparationJourney() {
         if (error) throw error;
       } else {
         // Create new preparation via backend API
-        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+        const rawUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+        const backendUrl = rawUrl.replace(/\/+$/, '');
         const { data: session } = await supabase.auth.getSession();
         
         if (!session.session?.access_token) {
