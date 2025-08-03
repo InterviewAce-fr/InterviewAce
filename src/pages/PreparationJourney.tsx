@@ -10,7 +10,8 @@ const router = express.Router();
 // Validation schemas
 const createPreparationSchema = Joi.object({
   job_url: Joi.string().uri().allow(''),
-      const baseData = data || preparationData;
+  title: Joi.string(),
+  step_1_data: Joi.object().default({}),
   step_2_data: Joi.object().default({}),
   step_3_data: Joi.object().default({}),
   step_4_data: Joi.object().default({}),
@@ -90,6 +91,8 @@ router.post('/',
       console.log('POST /api/preparations - User:', req.user);
       
       const userId = req.user!.id;
+      const preparationData = req.body;
+      const baseData = preparationData;
       const dataToSave = {
         ...baseData,
         title: baseData.title && baseData.title.trim() !== '' 
@@ -98,6 +101,10 @@ router.post('/',
       };
       
       console.log('Final data to save:', dataToSave);
+
+      // Check preparation limit for free users
+      const { count } = await supabase
+          .from('preparations')
           .select('*', { count: 'exact', head: true })
           .eq('user_id', userId);
 
@@ -107,18 +114,17 @@ router.post('/',
             code: 'PREPARATION_LIMIT_REACHED'
           });
         }
-      }
 
-      const preparationData = {
+      const finalPreparationData = {
         ...req.body,
         user_id: userId
       };
 
-      console.log('Inserting preparation data:', preparationData);
+      console.log('Inserting preparation data:', finalPreparationData);
 
       const { data, error } = await supabase
         .from('preparations')
-        .insert([preparationData])
+        .insert([finalPreparationData])
         .select()
         .single();
 
