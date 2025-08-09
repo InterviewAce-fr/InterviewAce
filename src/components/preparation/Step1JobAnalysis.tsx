@@ -1,195 +1,321 @@
-import express from 'express';
-import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { validateBody } from '../middleware/validation';
-import { supabase } from '../utils/supabase';
-import { logger } from '../utils/logger';
-import Joi from 'joi';
+import React, { useState } from 'react';
+import { Search, Globe, FileText, Sparkles, CheckCircle, AlertCircle } from 'lucide-react';
+import { aiService } from '../../lib/aiService';
 
-const router = express.Router();
+interface Step1Data {
+  jobTitle: string;
+  companyName: string;
+  jobUrl: string;
+  keyRequirements: string[];
+  keyResponsibilities: string[];
+  jobDescription: string;
+}
 
-// Validation schemas
-const createPreparationSchema = Joi.object({
-  title: Joi.string().min(1).required(),
-  job_url: Joi.string().uri().allow(''),
-  step_1_data: Joi.object().default({}),
-  step_2_data: Joi.object().default({}),
-  step_3_data: Joi.object().default({}),
-  step_4_data: Joi.object().default({}),
-  step_5_data: Joi.object().default({}),
-  step_6_data: Joi.object().default({})
-});
+interface Step1JobAnalysisProps {
+  data: Step1Data;
+  onUpdate: (data: Step1Data) => void;
+}
 
-const updatePreparationSchema = Joi.object({
-  title: Joi.string().min(1),
-  job_url: Joi.string().uri().allow(''),
-  step_1_data: Joi.object(),
-  step_2_data: Joi.object(),
-  step_3_data: Joi.object(),
-  step_4_data: Joi.object(),
-  step_5_data: Joi.object(),
-  step_6_data: Joi.object(),
-  is_complete: Joi.boolean()
-});
+export default function Step1JobAnalysis({ data, onUpdate }: Step1JobAnalysisProps) {
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisStatus, setAnalysisStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [jobInput, setJobInput] = useState('');
+  const [inputType, setInputType] = useState<'url' | 'text'>('url');
 
-// Get all preparations for user
-router.get('/', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const userId = req.user!.id;
+  const handleAnalyzeJob = async () => {
+    if (!jobInput.trim()) return;
 
-    const { data, error } = await supabase
-      .from('preparations')
-      .select('*')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false });
+    setIsAnalyzing(true);
+    setAnalysisStatus('idle');
 
-    if (error) throw error;
-
-    res.json({ preparations: data || [] });
-
-  } catch (error) {
-    logger.error('Get preparations error:', error);
-    res.status(500).json({ error: 'Failed to fetch preparations' });
-  }
-});
-
-// Get single preparation
-router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
-
-    const { data, error } = await supabase
-      .from('preparations')
-      .select('*')
-      .eq('id', id)
-      .eq('user_id', userId)
-      .single();
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return res.status(404).json({ error: 'Preparation not found' });
-      }
-      throw error;
-    }
-
-    res.json({ preparation: data });
-
-  } catch (error) {
-    logger.error('Get preparation error:', error);
-    res.status(500).json({ error: 'Failed to fetch preparation' });
-  }
-});
-
-// Create new preparation
-router.post('/', 
-  authenticateToken,
-  validateBody(createPreparationSchema),
-  async (req: AuthRequest, res) => {
     try {
-      // Log incoming request for debugging
-      console.log('POST /api/preparations - Request body:', req.body);
-      console.log('POST /api/preparations - User:', req.user);
+      let analysisResult;
       
-      const userId = req.user!.id;
-      const isPremium = req.user!.is_premium;
-
-      // Check if user has reached preparation limit (free users: 1, premium: unlimited)
-      if (!isPremium) {
-        const { count } = await supabase
-          .from('preparations')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', userId);
-
-        if (count && count >= 1) {
-          return res.status(403).json({
-            error: 'Free users can only create 1 preparation. Upgrade to Premium for unlimited preparations.',
-            code: 'PREPARATION_LIMIT_REACHED'
-          });
-        }
+      if (inputType === 'url') {
+        analysisResult = await aiService.analyzeJobFromUrl(jobInput);
+      } else {
+        analysisResult = await aiService.analyzeJobFromText(jobInput);
       }
 
-      const preparationData = {
-        ...req.body,
-        user_id: userId
-      };
+      onUpdate({
+        ...data,
+        jobTitle: analysisResult.job_title || data.jobTitle,
+        companyName: analysisResult.company_name || data.companyName,
+        jobUrl: inputType === 'url' ? jobInput : data.jobUrl,
+        keyRequirements: analysisResult.required_profile || data.keyRequirements,
+        keyResponsibilities: analysisResult.responsibilities || data.keyResponsibilities,
+        jobDescription: inputType === 'text' ? jobInput : data.jobDescription
+      });
 
-      console.log('Inserting preparation data:', preparationData);
-
-      const { data, error } = await supabase
-        .from('preparations')
-        .insert([preparationData])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      res.status(201).json({ preparation: data });
-
+      setAnalysisStatus('success');
     } catch (error) {
-      logger.error('Create preparation error:', error);
-      console.error('Detailed error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create preparation';
-      res.status(500).json({ error: errorMessage });
+      console.error('Job analysis failed:', error);
+      setAnalysisStatus('error');
+    } finally {
+      setIsAnalyzing(false);
     }
-  }
-);
+  };
 
-// Update preparation
-router.put('/:id',
-  authenticateToken,
-  validateBody(updatePreparationSchema),
-  async (req: AuthRequest, res) => {
-    try {
-      const { id } = req.params;
-      const userId = req.user!.id;
+  const addRequirement = () => {
+    onUpdate({
+      ...data,
+      keyRequirements: [...data.keyRequirements, '']
+    });
+  };
 
-      const { data, error } = await supabase
-        .from('preparations')
-        .update({
-          ...req.body,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .eq('user_id', userId)
-        .select()
-        .single();
+  const updateRequirement = (index: number, value: string) => {
+    const updated = [...data.keyRequirements];
+    updated[index] = value;
+    onUpdate({
+      ...data,
+      keyRequirements: updated
+    });
+  };
 
-      if (error) {
-        if (error.code === 'PGRST116') {
-          return res.status(404).json({ error: 'Preparation not found' });
-        }
-        throw error;
-      }
+  const removeRequirement = (index: number) => {
+    onUpdate({
+      ...data,
+      keyRequirements: data.keyRequirements.filter((_, i) => i !== index)
+    });
+  };
 
-      res.json({ preparation: data });
+  const addResponsibility = () => {
+    onUpdate({
+      ...data,
+      keyResponsibilities: [...data.keyResponsibilities, '']
+    });
+  };
 
-    } catch (error) {
-      logger.error('Update preparation error:', error);
-      res.status(500).json({ error: 'Failed to update preparation' });
-    }
-  }
-);
+  const updateResponsibility = (index: number, value: string) => {
+    const updated = [...data.keyResponsibilities];
+    updated[index] = value;
+    onUpdate({
+      ...data,
+      keyResponsibilities: updated
+    });
+  };
 
-// Delete preparation
-router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
+  const removeResponsibility = (index: number) => {
+    onUpdate({
+      ...data,
+      keyResponsibilities: data.keyResponsibilities.filter((_, i) => i !== index)
+    });
+  };
 
-    const { error } = await supabase
-      .from('preparations')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
+  return (
+    <div className="space-y-8">
+      <div className="text-center">
+        <Search className="w-12 h-12 text-blue-600 mx-auto mb-4" />
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Job Analysis</h2>
+        <p className="text-gray-600">
+          Analyze the job posting to understand requirements and responsibilities
+        </p>
+      </div>
 
-    if (error) throw error;
+      {/* AI Job Analysis Section */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg border border-blue-200">
+        <div className="flex items-center gap-2 mb-4">
+          <Sparkles className="w-5 h-5 text-blue-600" />
+          <h3 className="text-lg font-semibold text-gray-900">AI Job Analysis</h3>
+        </div>
+        
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setInputType('url')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                inputType === 'url'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <Globe className="w-4 h-4 inline mr-2" />
+              Job URL
+            </button>
+            <button
+              onClick={() => setInputType('text')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                inputType === 'text'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <FileText className="w-4 h-4 inline mr-2" />
+              Job Text
+            </button>
+          </div>
 
-    res.json({ message: 'Preparation deleted successfully' });
+          <div>
+            {inputType === 'url' ? (
+              <input
+                type="url"
+                value={jobInput}
+                onChange={(e) => setJobInput(e.target.value)}
+                placeholder="https://company.com/job-posting"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            ) : (
+              <textarea
+                value={jobInput}
+                onChange={(e) => setJobInput(e.target.value)}
+                placeholder="Paste the job description here..."
+                rows={6}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              />
+            )}
+          </div>
 
-  } catch (error) {
-    logger.error('Delete preparation error:', error);
-    res.status(500).json({ error: 'Failed to delete preparation' });
-  }
-});
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleAnalyzeJob}
+              disabled={!jobInput.trim() || isAnalyzing}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium"
+            >
+              {isAnalyzing ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  Analyze Job
+                </>
+              )}
+            </button>
 
-export default router;
+            {analysisStatus === 'success' && (
+              <div className="flex items-center gap-2 text-green-600">
+                <CheckCircle className="w-5 h-5" />
+                <span className="font-medium">Analysis complete!</span>
+              </div>
+            )}
+
+            {analysisStatus === 'error' && (
+              <div className="flex items-center gap-2 text-red-600">
+                <AlertCircle className="w-5 h-5" />
+                <span className="font-medium">Analysis failed. Please try again.</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Basic Job Information */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Job Title
+          </label>
+          <input
+            type="text"
+            value={data.jobTitle}
+            onChange={(e) => onUpdate({ ...data, jobTitle: e.target.value })}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="e.g., Senior Software Engineer"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Company Name
+          </label>
+          <input
+            type="text"
+            value={data.companyName}
+            onChange={(e) => onUpdate({ ...data, companyName: e.target.value })}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="e.g., TechCorp Inc."
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Job URL (Optional)
+        </label>
+        <input
+          type="url"
+          value={data.jobUrl}
+          onChange={(e) => onUpdate({ ...data, jobUrl: e.target.value })}
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          placeholder="https://company.com/careers/job-id"
+        />
+      </div>
+
+      {/* Key Requirements */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <label className="block text-sm font-medium text-gray-700">
+            Key Requirements
+          </label>
+          <button
+            onClick={addRequirement}
+            className="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Add Requirement
+          </button>
+        </div>
+        <div className="space-y-3">
+          {data.keyRequirements.map((requirement, index) => (
+            <div key={index} className="flex gap-2">
+              <input
+                type="text"
+                value={requirement}
+                onChange={(e) => updateRequirement(index, e.target.value)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="e.g., 5+ years of React experience"
+              />
+              <button
+                onClick={() => removeRequirement(index)}
+                className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          {data.keyRequirements.length === 0 && (
+            <p className="text-gray-500 text-sm italic">No requirements added yet</p>
+          )}
+        </div>
+      </div>
+
+      {/* Key Responsibilities */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <label className="block text-sm font-medium text-gray-700">
+            Key Responsibilities
+          </label>
+          <button
+            onClick={addResponsibility}
+            className="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Add Responsibility
+          </button>
+        </div>
+        <div className="space-y-3">
+          {data.keyResponsibilities.map((responsibility, index) => (
+            <div key={index} className="flex gap-2">
+              <input
+                type="text"
+                value={responsibility}
+                onChange={(e) => updateResponsibility(index, e.target.value)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="e.g., Lead frontend development team"
+              />
+              <button
+                onClick={() => removeResponsibility(index)}
+                className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          {data.keyResponsibilities.length === 0 && (
+            <p className="text-gray-500 text-sm italic">No responsibilities added yet</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
