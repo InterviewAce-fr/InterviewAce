@@ -1,40 +1,12 @@
-import express from 'express';
-import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { validateBody } from '../middleware/validation';
-import { supabase } from '../utils/supabase';
-import { logger } from '../utils/logger';
-import Joi from 'joi';
-import { Zap, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Zap, Loader2, MessageCircle, Building, User, Target } from 'lucide-react';
 import { aiService } from '../../lib/aiService';
 import { toast } from '../ui/Toast';
 
-const router = express.Router();
-
-// Validation schemas
-const createPreparationSchema = Joi.object({
-  title: Joi.string().min(1).required(),
-  job_url: Joi.string().uri().allow(''),
-  step_1_data: Joi.object().default({}),
-  step_2_data: Joi.object().default({}),
-  step_3_data: Joi.object().default({}),
-  step_4_data: Joi.object().default({}),
-  step_5_data: Joi.object().default({}),
-  step_6_data: Joi.object().default({})
-});
-
-const updatePreparationSchema = Joi.object({
-  title: Joi.string().min(1),
-  job_url: Joi.string().uri().allow(''),
-  step_1_data: Joi.object(),
-  step_2_data: Joi.object(),
-  step_3_data: Joi.object(),
-  step_4_data: Joi.object(),
-  step_5_data: Joi.object(),
-  step_6_data: Joi.object(),
-  is_complete: Joi.boolean()
-});
-
 interface Step5Data {
+  whyCompany?: string;
+  whyRole?: string;
+  whyYou?: string;
 }
 
 interface Step5Props {
@@ -54,7 +26,7 @@ const Step5WhyQuestions: React.FC<Step5Props> = ({
   swotData, 
   matchingResults 
 }) => {
-  const [isGenerating, setIsGenerating] = React.useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const handleChange = (field: keyof Step5Data, value: string) => {
     onUpdate({ ...data, [field]: value });
@@ -92,168 +64,34 @@ const Step5WhyQuestions: React.FC<Step5Props> = ({
     }
   };
 
-// Get all preparations for user
-router.get('/', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const userId = req.user!.id;
-
-    const { data, error } = await supabase
-      .from('preparations')
-      .select('*')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false });
-
-    if (error) throw error;
-
-    res.json({ preparations: data || [] });
-
-  } catch (error) {
-    logger.error('Get preparations error:', error);
-    res.status(500).json({ error: 'Failed to fetch preparations' });
-  }
-});
-
-// Get single preparation
-router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
-
-    const { data, error } = await supabase
-      .from('preparations')
-      .select('*')
-      .eq('id', id)
-      .eq('user_id', userId)
-      .single();
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return res.status(404).json({ error: 'Preparation not found' });
-      }
-      throw error;
-    }
-
-    res.json({ preparation: data });
-
-  } catch (error) {
-    logger.error('Get preparation error:', error);
-    res.status(500).json({ error: 'Failed to fetch preparation' });
-  }
-});
-
-// Create new preparation
-router.post('/', 
-  authenticateToken,
-  validateBody(createPreparationSchema),
-  async (req: AuthRequest, res) => {
-    try {
-      // Log incoming request for debugging
-      console.log('POST /api/preparations - Request body:', req.body);
-      console.log('POST /api/preparations - User:', req.user);
-      
-      const userId = req.user!.id;
-      const isPremium = req.user!.is_premium;
-
-      // Check if user has reached preparation limit (free users: 1, premium: unlimited)
-      if (!isPremium) {
-        const { count } = await supabase
-          .from('preparations')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', userId);
-
-        if (count && count >= 1) {
-          return res.status(403).json({
-            error: 'Free users can only create 1 preparation. Upgrade to Premium for unlimited preparations.',
-            code: 'PREPARATION_LIMIT_REACHED'
-          });
-        }
-      }
-
-      const preparationData = {
-        ...req.body,
-        user_id: userId
-      };
-
-      console.log('Inserting preparation data:', preparationData);
-
-      const { data, error } = await supabase
-        .from('preparations')
-        .insert([preparationData])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      res.status(201).json({ preparation: data });
-
-    } catch (error) {
-      logger.error('Create preparation error:', error);
-      console.error('Detailed error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create preparation';
-      res.status(500).json({ error: errorMessage });
-    }
-  }
-);
-
-// Update preparation
-router.put('/:id',
-  authenticateToken,
-  validateBody(updatePreparationSchema),
-  async (req: AuthRequest, res) => {
-    try {
-      const { id } = req.params;
-      const userId = req.user!.id;
-
-      const { data, error } = await supabase
-        .from('preparations')
-        .update({
-          ...req.body,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .eq('user_id', userId)
-        .select()
-        .single();
-
-      if (error) {
-        if (error.code === 'PGRST116') {
-          return res.status(404).json({ error: 'Preparation not found' });
-        }
-        throw error;
-      }
-
-      res.json({ preparation: data });
-
-    } catch (error) {
-      logger.error('Update preparation error:', error);
-      res.status(500).json({ error: 'Failed to update preparation' });
-    }
-  }
-);
-
-// Delete preparation
-router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
-
-    const { error } = await supabase
-      .from('preparations')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
-
-    if (error) throw error;
-
-    res.json({ message: 'Preparation deleted successfully' });
-
-  } catch (error) {
-    logger.error('Delete preparation error:', error);
-    res.status(500).json({ error: 'Failed to delete preparation' });
-  }
-});
-
   const questions = [
+    {
+      id: 'whyYou',
+      title: 'Why should we hire you?',
+      icon: User,
+      placeholder: 'Focus on your unique value proposition, key achievements, and how your skills directly address their needs...',
+      description: 'Highlight your strongest matches and unique qualifications that make you the ideal candidate.'
+    },
+    {
+      id: 'whyCompany',
+      title: 'Why do you want to work for this company?',
+      icon: Building,
+      placeholder: 'Research the company\'s mission, values, recent achievements, and explain how they align with your career goals...',
+      description: 'Show genuine interest in the company\'s mission, culture, and growth opportunities.'
+    },
+    {
+      id: 'whyRole',
+      title: 'Why are you interested in this role?',
+      icon: Target,
+      placeholder: 'Connect the role\'s responsibilities to your career aspirations and explain how it fits your professional development...',
+      description: 'Demonstrate how this position aligns with your career trajectory and interests.'
+    }
+  ];
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">Why Questions</h2>
         <p className="text-gray-600">
           Prepare compelling answers to the most fundamental interview questions.
         </p>
@@ -279,7 +117,65 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
       </div>
 
       <div className="space-y-8">
+        {questions.map((question) => {
+          const Icon = question.icon;
+          return (
+            <div key={question.id} className="bg-white border border-gray-200 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                <div className="flex items-center justify-center w-10 h-10 bg-indigo-100 rounded-lg mr-3">
+                  <Icon className="h-5 w-5 text-indigo-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">{question.title}</h3>
+                  <p className="text-sm text-gray-600">{question.description}</p>
+                </div>
+              </div>
+              
+              <textarea
+                value={data[question.id as keyof Step5Data] || ''}
+                onChange={(e) => handleChange(question.id as keyof Step5Data, e.target.value)}
+                placeholder={question.placeholder}
+                rows={6}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+              />
+              
+              <div className="mt-3 text-sm text-gray-500">
+                <MessageCircle className="inline h-4 w-4 mr-1" />
+                Tip: Keep your answer concise (2-3 minutes when spoken) and include specific examples.
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Tips Section */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-3">💡 Interview Tips</h3>
+        <ul className="space-y-2 text-sm text-gray-700">
+          <li className="flex items-start">
+            <span className="text-blue-600 mr-2">•</span>
+            Use the STAR method (Situation, Task, Action, Result) for behavioral questions
+          </li>
+          <li className="flex items-start">
+            <span className="text-blue-600 mr-2">•</span>
+            Quantify your achievements with specific numbers and metrics when possible
+          </li>
+          <li className="flex items-start">
+            <span className="text-blue-600 mr-2">•</span>
+            Research the company's recent news, products, and competitors
+          </li>
+          <li className="flex items-start">
+            <span className="text-blue-600 mr-2">•</span>
+            Practice your answers out loud to improve delivery and timing
+          </li>
+          <li className="flex items-start">
+            <span className="text-blue-600 mr-2">•</span>
+            Prepare thoughtful questions to ask the interviewer about the role and company
+          </li>
+        </ul>
+      </div>
+    </div>
   );
 };
 
-export default router;
+export default Step5WhyQuestions;
