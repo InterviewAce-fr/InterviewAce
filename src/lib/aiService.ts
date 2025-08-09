@@ -1,392 +1,195 @@
-import { supabase } from './supabase';
+import express from 'express';
+import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { validateBody } from '../middleware/validation';
+import { supabase } from '../utils/supabase';
+import { logger } from '../utils/logger';
+import Joi from 'joi';
 
-export interface JobAnalysis {
-  company_name: string;
-  job_title: string;
-  responsibilities: string[];
-  required_profile: string[];
-  job_description?: string;
-}
+const router = express.Router();
 
-export interface CVAnalysis {
-  education: Array<{
-    degree: string;
-    institution: string;
-    year?: string;
-  }>;
-  experience: Array<{
-    title: string;
-    company: string;
-    duration: string;
-    responsibilities: string[];
-  }>;
-  skills: {
-    explicit: string[];
-    inferred: string[];
-  };
-}
+// Validation schemas
+const createPreparationSchema = Joi.object({
+  title: Joi.string().min(1).required(),
+  job_url: Joi.string().uri().allow(''),
+  step_1_data: Joi.object().default({}),
+  step_2_data: Joi.object().default({}),
+  step_3_data: Joi.object().default({}),
+  step_4_data: Joi.object().default({}),
+  step_5_data: Joi.object().default({}),
+  step_6_data: Joi.object().default({})
+});
 
-export interface MatchResult {
-  skill: string;
-  grade: 'High' | 'Moderate' | 'Low';
-  similarity: number;
-  color: string;
-}
+const updatePreparationSchema = Joi.object({
+  title: Joi.string().min(1),
+  job_url: Joi.string().uri().allow(''),
+  step_1_data: Joi.object(),
+  step_2_data: Joi.object(),
+  step_3_data: Joi.object(),
+  step_4_data: Joi.object(),
+  step_5_data: Joi.object(),
+  step_6_data: Joi.object(),
+  is_complete: Joi.boolean()
+});
 
-export interface MatchAnalysis {
-  overall_score: number;
-  matches: MatchResult[];
-  distribution: {
-    high: number;
-    moderate: number;
-    low: number;
-  };
-}
+// Get all preparations for user
+router.get('/', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.id;
 
-export interface WhySuggestions {
-  why_you: string;
-  why_company: string;
-  why_role: string;
-}
+    const { data, error } = await supabase
+      .from('preparations')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false });
 
-class AIService {
-  private apiKey: string | null = null;
+    if (error) throw error;
 
-  constructor() {
-    this.apiKey = import.meta.env.VITE_OPENAI_API_KEY || null;
+    res.json({ preparations: data || [] });
+
+  } catch (error) {
+    logger.error('Get preparations error:', error);
+    res.status(500).json({ error: 'Failed to fetch preparations' });
   }
+});
 
-  private async getAuthToken(): Promise<string | null> {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token || null;
+// Get single preparation
+router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    const { data, error } = await supabase
+      .from('preparations')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ error: 'Preparation not found' });
+      }
+      throw error;
+    }
+
+    res.json({ preparation: data });
+
+  } catch (error) {
+    logger.error('Get preparation error:', error);
+    res.status(500).json({ error: 'Failed to fetch preparation' });
   }
+});
 
-  async analyzeJobFromUrl(url: string): Promise<JobAnalysis> {
+// Create new preparation
+router.post('/', 
+  authenticateToken,
+  validateBody(createPreparationSchema),
+  async (req: AuthRequest, res) => {
     try {
-      const token = await this.getAuthToken();
-      if (!token) {
-        throw new Error('Authentication required');
-      }
-
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/scrape/job`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ url })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to scrape job posting');
-      }
-
-      const data = await response.json();
-      return this.analyzeJobFromText(data.content);
-    } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to analyze job from URL');
-    }
-  }
-
-  async analyzeJobFromText(jobText: string): Promise<JobAnalysis> {
-    if (!this.apiKey) {
-      throw new Error('OpenAI API key not configured');
-    }
-
-    try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert job posting analyzer. Extract structured information from job postings and return valid JSON only.'
-            },
-            {
-              role: 'user',
-              content: `Analyze this job posting and extract the following information in JSON format:
-              {
-                "company_name": "string",
-                "job_title": "string", 
-                "responsibilities": ["array of key responsibilities"],
-                "required_profile": ["array of requirements and qualifications"]
-              }
-              
-              Job posting:
-              ${jobText}`
-            }
-          ],
-          temperature: 0.3
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || `OpenAI API request failed: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices[0]?.message?.content;
-
-      if (!content) {
-        throw new Error('No response from OpenAI');
-      }
-
-      try {
-        return JSON.parse(content);
-      } catch (parseError) {
-        console.error('Failed to parse OpenAI response:', content);
-        throw new Error('Invalid response format from AI');
-      }
-    } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to analyze job text');
-    }
-  }
-
-  async analyzeCVText(cvText: string): Promise<CVAnalysis> {
-    if (!this.apiKey) {
-      throw new Error('OpenAI API key not configured');
-    }
-
-    try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert CV analyzer. Extract structured information from CVs and return valid JSON only.'
-            },
-            {
-              role: 'user',
-              content: `Analyze this CV and extract the following information in JSON format:
-              {
-                "education": [{"degree": "string", "institution": "string", "year": "string"}],
-                "experience": [{"title": "string", "company": "string", "duration": "string", "responsibilities": ["array"]}],
-                "skills": {
-                  "explicit": ["skills explicitly mentioned"],
-                  "inferred": ["skills inferred from education and experience"]
-                }
-              }
-              
-              CV text:
-              ${cvText}`
-            }
-          ],
-          temperature: 0.3
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || `OpenAI API request failed: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices[0]?.message?.content;
-
-      if (!content) {
-        throw new Error('No response from OpenAI');
-      }
-
-      try {
-        return JSON.parse(content);
-      } catch (parseError) {
-        console.error('Failed to parse OpenAI response:', content);
-        throw new Error('Invalid response format from AI');
-      }
-    } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to analyze CV text');
-    }
-  }
-
-  async analyzeMatch(candidateSkills: string[], jobRequirements: string[]): Promise<MatchAnalysis> {
-    if (!this.apiKey) {
-      throw new Error('OpenAI API key not configured');
-    }
-
-    try {
-      // Get embeddings for candidate skills
-      const candidateEmbeddings = await this.getEmbeddings(candidateSkills);
+      // Log incoming request for debugging
+      console.log('POST /api/preparations - Request body:', req.body);
+      console.log('POST /api/preparations - User:', req.user);
       
-      // Get embeddings for job requirements
-      const jobEmbeddings = await this.getEmbeddings(jobRequirements);
+      const userId = req.user!.id;
+      const isPremium = req.user!.is_premium;
 
-      // Calculate similarity scores
-      const matches: MatchResult[] = [];
-      
-      for (let i = 0; i < candidateSkills.length; i++) {
-        let maxSimilarity = 0;
-        
-        for (let j = 0; j < jobRequirements.length; j++) {
-          const similarity = this.cosineSimilarity(candidateEmbeddings[i], jobEmbeddings[j]);
-          maxSimilarity = Math.max(maxSimilarity, similarity);
+      // Check if user has reached preparation limit (free users: 1, premium: unlimited)
+      if (!isPremium) {
+        const { count } = await supabase
+          .from('preparations')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId);
+
+        if (count && count >= 1) {
+          return res.status(403).json({
+            error: 'Free users can only create 1 preparation. Upgrade to Premium for unlimited preparations.',
+            code: 'PREPARATION_LIMIT_REACHED'
+          });
         }
-
-        let grade: 'High' | 'Moderate' | 'Low';
-        let color: string;
-
-        if (maxSimilarity >= 0.8) {
-          grade = 'High';
-          color = 'text-green-600 bg-green-50';
-        } else if (maxSimilarity >= 0.6) {
-          grade = 'Moderate';
-          color = 'text-yellow-600 bg-yellow-50';
-        } else {
-          grade = 'Low';
-          color = 'text-red-600 bg-red-50';
-        }
-
-        matches.push({
-          skill: candidateSkills[i],
-          grade,
-          similarity: maxSimilarity,
-          color
-        });
       }
 
-      // Calculate distribution
-      const distribution = {
-        high: matches.filter(m => m.grade === 'High').length,
-        moderate: matches.filter(m => m.grade === 'Moderate').length,
-        low: matches.filter(m => m.grade === 'Low').length
+      const preparationData = {
+        ...req.body,
+        user_id: userId
       };
 
-      // Calculate overall score
-      const totalSkills = matches.length;
-      const weightedScore = matches.reduce((sum, match) => {
-        const weight = match.grade === 'High' ? 1 : match.grade === 'Moderate' ? 0.6 : 0.2;
-        return sum + weight;
-      }, 0);
-      
-      const overall_score = totalSkills > 0 ? Math.round((weightedScore / totalSkills) * 100) : 0;
+      console.log('Inserting preparation data:', preparationData);
 
-      return {
-        overall_score,
-        matches: matches.sort((a, b) => b.similarity - a.similarity),
-        distribution
-      };
+      const { data, error } = await supabase
+        .from('preparations')
+        .insert([preparationData])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      res.status(201).json({ preparation: data });
+
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to analyze match');
+      logger.error('Create preparation error:', error);
+      console.error('Detailed error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create preparation';
+      res.status(500).json({ error: errorMessage });
     }
   }
+);
 
-  private async getEmbeddings(texts: string[]): Promise<number[][]> {
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'text-embedding-3-small',
-        input: texts
-      })
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error?.message || `OpenAI embeddings request failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.data.map((item: any) => item.embedding);
-  }
-
-  private cosineSimilarity(a: number[], b: number[]): number {
-    const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0);
-    const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
-    const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
-    
-    if (magnitudeA === 0 || magnitudeB === 0) return 0;
-    return dotProduct / (magnitudeA * magnitudeB);
-  }
-
-  async generateWhySuggestions(
-    jobData: any,
-    cvData: any,
-    swotData: any,
-    matchData: any
-  ): Promise<WhySuggestions> {
-    if (!this.apiKey) {
-      throw new Error('OpenAI API key not configured');
-    }
-
+// Update preparation
+router.put('/:id',
+  authenticateToken,
+  validateBody(updatePreparationSchema),
+  async (req: AuthRequest, res) => {
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert interview coach. Generate personalized, concise answers for common interview questions based on the candidate\'s profile and job analysis.'
-            },
-            {
-              role: 'user',
-              content: `Based on the following information, generate personalized answers for these interview questions. Keep each answer concise (2-3 sentences) and compelling:
+      const { id } = req.params;
+      const userId = req.user!.id;
 
-              Job Information:
-              ${JSON.stringify(jobData, null, 2)}
-              
-              Candidate Profile:
-              ${JSON.stringify(cvData, null, 2)}
-              
-              Company Analysis (SWOT):
-              ${JSON.stringify(swotData, null, 2)}
-              
-              Skills Match Analysis:
-              ${JSON.stringify(matchData, null, 2)}
-              
-              Generate answers in JSON format:
-              {
-                "why_you": "Why should we hire you?",
-                "why_company": "Why do you want to work for this company?", 
-                "why_role": "Why are you interested in this role?"
-              }`
-            }
-          ],
-          temperature: 0.7
+      const { data, error } = await supabase
+        .from('preparations')
+        .update({
+          ...req.body,
+          updated_at: new Date().toISOString()
         })
-      });
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select()
+        .single();
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || `OpenAI API request failed: ${response.status}`);
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return res.status(404).json({ error: 'Preparation not found' });
+        }
+        throw error;
       }
 
-      const data = await response.json();
-      const content = data.choices[0]?.message?.content;
+      res.json({ preparation: data });
 
-      if (!content) {
-        throw new Error('No response from OpenAI');
-      }
-
-      try {
-        return JSON.parse(content);
-      } catch (parseError) {
-        console.error('Failed to parse OpenAI response:', content);
-        throw new Error('Invalid response format from AI');
-      }
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to generate suggestions');
+      logger.error('Update preparation error:', error);
+      res.status(500).json({ error: 'Failed to update preparation' });
     }
   }
-}
+);
 
-export const aiService = new AIService();
+// Delete preparation
+router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    const { error } = await supabase
+      .from('preparations')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+
+    res.json({ message: 'Preparation deleted successfully' });
+
+  } catch (error) {
+    logger.error('Delete preparation error:', error);
+    res.status(500).json({ error: 'Failed to delete preparation' });
+  }
+});
+
+export default router;
