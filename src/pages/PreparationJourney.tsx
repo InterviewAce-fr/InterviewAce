@@ -9,7 +9,9 @@ const router = express.Router();
 
 // Validation schemas
 const createPreparationSchema = Joi.object({
-              onUpdate={currentStep === 7 ? () => {} : (data: any) => saveStepData(currentStep, data)}
+  title: Joi.string().required(),
+  job_url: Joi.string().uri().allow('').default(''),
+  job_url: Joi.string().uri().allow(''),
   step_1_data: Joi.object().default({}),
   step_2_data: Joi.object().default({}),
   step_3_data: Joi.object().default({}),
