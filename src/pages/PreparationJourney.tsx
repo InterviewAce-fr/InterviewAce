@@ -9,7 +9,6 @@ const router = express.Router();
 
 // Validation schemas
 const createPreparationSchema = Joi.object({
-  'Your Experience',
   job_url: Joi.string().uri().allow(''),
   step_1_data: Joi.object().default({}),
   step_2_data: Joi.object().default({}),
