@@ -9,7 +9,7 @@ const router = express.Router();
 
 // Validation schemas
 const createPreparationSchema = Joi.object({
-      <div className="bg-white rounded-lg border-2 border-gray-200 p-6" id="business-model-canvas">
+  title: Joi.string().required(),
   job_url: Joi.string().uri().allow(''),
   step_1_data: Joi.object().default({}),
   step_2_data: Joi.object().default({}),
