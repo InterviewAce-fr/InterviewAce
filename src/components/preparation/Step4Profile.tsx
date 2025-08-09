@@ -1,298 +1,191 @@
-import React, { useState, useEffect } from 'react';
-import { User, Briefcase, GraduationCap, Award, Target, Zap } from 'lucide-react';
+import express from 'express';
+import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { validateBody } from '../middleware/validation';
+import { supabase } from '../utils/supabase';
+import { logger } from '../utils/logger';
+import Joi from 'joi';
 
-interface Step4Props {
-  data: any;
-  onUpdate: (data: any) => void;
-}
+const router = express.Router();
 
-export default function Step4Profile({ data, onUpdate }: Step4Props) {
-  const [formData, setFormData] = useState({
-    personal_mission: data.personal_mission || '',
-    career_objective: data.career_objective || '',
-    key_skills: data.key_skills || [],
-    relevant_experiences: data.relevant_experiences || [],
-    achievements: data.achievements || [],
-    education_highlights: data.education_highlights || [],
-    certifications: data.certifications || [],
-    profile_match_analysis: data.profile_match_analysis || '',
-    ...data
-  });
+// Validation schemas
+const createPreparationSchema = Joi.object({
+    role_mission: data.role_mission || '',
+    ideal_profile: data.ideal_profile || '',
+    matching_experiences: data.matching_experiences || [],
+  step_6_data: Joi.object().default({})
+});
 
-  useEffect(() => {
-    onUpdate(formData);
-  }, [formData]);
+const updatePreparationSchema = Joi.object({
+  title: Joi.string().min(1),
+  job_url: Joi.string().uri().allow(''),
+  step_1_data: Joi.object(),
+  step_2_data: Joi.object(),
+  step_3_data: Joi.object(),
+  step_4_data: Joi.object(),
+  step_5_data: Joi.object(),
+  step_6_data: Joi.object(),
+  is_complete: Joi.boolean()
+});
 
-  const handleInputChange = (field: string, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
+// Get all preparations for user
+router.get('/', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.id;
 
-  const handleArrayChange = (field: string, index: number, value: string) => {
-    const newArray = [...(formData[field as keyof typeof formData] as string[])];
-    newArray[index] = value;
-    handleInputChange(field, newArray);
-  };
+    const { data, error } = await supabase
+      .from('preparations')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false });
 
-  const addArrayItem = (field: string) => {
-    const currentArray = (formData[field as keyof typeof formData] as string[]) || [];
-    handleInputChange(field, [...currentArray, '']);
-  };
+    if (error) throw error;
 
-  const removeArrayItem = (field: string, index: number) => {
-    const newArray = [...(formData[field as keyof typeof formData] as string[])];
-    newArray.splice(index, 1);
-    handleInputChange(field, newArray);
-  };
+    res.json({ preparations: data || [] });
 
-  const analyzeWithAI = async () => {
-    // This would integrate with your AI service and CV
-    alert('AI analysis feature coming soon! This will analyze your CV and match it against the job requirements.');
-  };
+  } catch (error) {
+    logger.error('Get preparations error:', error);
+    res.status(500).json({ error: 'Failed to fetch preparations' });
+  }
+});
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Profile & Experience Matching</h2>
-            <p className="text-gray-600">
-              Analyze how your background aligns with the role and identify your strongest selling points.
-            </p>
-          </div>
-          <button
-            onClick={analyzeWithAI}
-            className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors"
-          >
-            <Zap className="h-4 w-4" />
-            <span>AI Analyze</span>
-          </button>
-        </div>
-      </div>
+// Get single preparation
+router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
 
-      {/* Personal Mission & Objective */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <div className="flex items-center space-x-2 mb-4">
-            <Target className="h-5 w-5 text-blue-600" />
-            <h3 className="font-semibold text-gray-900">Personal Mission</h3>
-          </div>
-          <textarea
-            value={formData.personal_mission}
-            onChange={(e) => handleInputChange('personal_mission', e.target.value)}
-            placeholder="What drives you professionally? What impact do you want to make?"
-            rows={4}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-        </div>
+    const { data, error } = await supabase
+      .from('preparations')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
 
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <div className="flex items-center space-x-2 mb-4">
-            <User className="h-5 w-5 text-blue-600" />
-            <h3 className="font-semibold text-gray-900">Career Objective</h3>
-          </div>
-          <textarea
-            value={formData.career_objective}
-            onChange={(e) => handleInputChange('career_objective', e.target.value)}
-            placeholder="What are your short and long-term career goals?"
-            rows={4}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-        </div>
-      </div>
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ error: 'Preparation not found' });
+      }
+      throw error;
+    }
 
-      {/* Key Skills */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <div className="flex items-center space-x-2 mb-4">
-          <Award className="h-5 w-5 text-blue-600" />
-          <h3 className="font-semibold text-gray-900">Key Skills</h3>
-        </div>
-        <div className="space-y-2">
-          {formData.key_skills.map((skill: string, index: number) => (
-            <div key={index} className="flex space-x-2">
-              <input
-                type="text"
-                value={skill}
-                onChange={(e) => handleArrayChange('key_skills', index, e.target.value)}
-                placeholder="e.g., React.js, Project Management, Data Analysis"
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <button
-                onClick={() => removeArrayItem('key_skills', index)}
-                className="px-3 py-2 text-red-600 hover:text-red-800 transition-colors"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-          <button
-            onClick={() => addArrayItem('key_skills')}
-            className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
-          >
-            + Add Skill
-          </button>
-        </div>
-      </div>
+    res.json({ preparation: data });
 
-      {/* Relevant Experiences */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <div className="flex items-center space-x-2 mb-4">
-          <Briefcase className="h-5 w-5 text-blue-600" />
-          <h3 className="font-semibold text-gray-900">Relevant Experiences</h3>
-        </div>
-        <div className="space-y-3">
-          {formData.relevant_experiences.map((experience: string, index: number) => (
-            <div key={index} className="border border-gray-200 rounded-lg p-4">
-              <textarea
-                value={experience}
-                onChange={(e) => handleArrayChange('relevant_experiences', index, e.target.value)}
-                placeholder="Describe a relevant work experience, project, or role that aligns with this position..."
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-2"
-              />
-              <button
-                onClick={() => removeArrayItem('relevant_experiences', index)}
-                className="text-red-600 hover:text-red-800 text-sm transition-colors"
-              >
-                Remove Experience
-              </button>
-            </div>
-          ))}
-          <button
-            onClick={() => addArrayItem('relevant_experiences')}
-            className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
-          >
-            + Add Experience
-          </button>
-        </div>
-      </div>
+  } catch (error) {
+    logger.error('Get preparation error:', error);
+    res.status(500).json({ error: 'Failed to fetch preparation' });
+  }
+});
 
-      {/* Achievements */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <div className="flex items-center space-x-2 mb-4">
-          <Award className="h-5 w-5 text-blue-600" />
-          <h3 className="font-semibold text-gray-900">Key Achievements</h3>
-        </div>
-        <div className="space-y-2">
-          {formData.achievements.map((achievement: string, index: number) => (
-            <div key={index} className="flex space-x-2">
-              <input
-                type="text"
-                value={achievement}
-                onChange={(e) => handleArrayChange('achievements', index, e.target.value)}
-                placeholder="e.g., Increased sales by 30%, Led team of 10 developers"
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <button
-                onClick={() => removeArrayItem('achievements', index)}
-                className="px-3 py-2 text-red-600 hover:text-red-800 transition-colors"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-          <button
-            onClick={() => addArrayItem('achievements')}
-            className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
-          >
-            + Add Achievement
-          </button>
-        </div>
-      </div>
+// Create new preparation
+router.post('/', 
+  authenticateToken,
+  validateBody(createPreparationSchema),
+  async (req: AuthRequest, res) => {
+    try {
+      // Log incoming request for debugging
+      console.log('POST /api/preparations - Request body:', req.body);
+      console.log('POST /api/preparations - User:', req.user);
+      
+      const userId = req.user!.id;
+      const isPremium = req.user!.is_premium;
 
-      {/* Education & Certifications */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <div className="flex items-center space-x-2 mb-4">
-            <GraduationCap className="h-5 w-5 text-blue-600" />
-            <h3 className="font-semibold text-gray-900">Education Highlights</h3>
-          </div>
-          <div className="space-y-2">
-            {formData.education_highlights.map((education: string, index: number) => (
-              <div key={index} className="flex space-x-2">
-                <input
-                  type="text"
-                  value={education}
-                  onChange={(e) => handleArrayChange('education_highlights', index, e.target.value)}
-                  placeholder="e.g., MBA in Business Administration, Stanford University"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-                <button
-                  onClick={() => removeArrayItem('education_highlights', index)}
-                  className="px-3 py-2 text-red-600 hover:text-red-800 transition-colors"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={() => addArrayItem('education_highlights')}
-              className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
-            >
-              + Add Education
-            </button>
-          </div>
-        </div>
+      // Check if user has reached preparation limit (free users: 1, premium: unlimited)
+      if (!isPremium) {
+        const { count } = await supabase
+          .from('preparations')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId);
 
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <div className="flex items-center space-x-2 mb-4">
-            <Award className="h-5 w-5 text-blue-600" />
-            <h3 className="font-semibold text-gray-900">Certifications</h3>
-          </div>
-          <div className="space-y-2">
-            {formData.certifications.map((certification: string, index: number) => (
-              <div key={index} className="flex space-x-2">
-                <input
-                  type="text"
-                  value={certification}
-                  onChange={(e) => handleArrayChange('certifications', index, e.target.value)}
-                  placeholder="e.g., AWS Certified Solutions Architect"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-                <button
-                  onClick={() => removeArrayItem('certifications', index)}
-                  className="px-3 py-2 text-red-600 hover:text-red-800 transition-colors"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={() => addArrayItem('certifications')}
-              className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
-            >
-              + Add Certification
-            </button>
-          </div>
-        </div>
-      </div>
+        if (count && count >= 1) {
+          return res.status(403).json({
+            error: 'Free users can only create 1 preparation. Upgrade to Premium for unlimited preparations.',
+            code: 'PREPARATION_LIMIT_REACHED'
+          });
+        }
+      }
 
-      {/* Profile Match Analysis */}
-      <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-6">
-        <h3 className="font-semibold text-gray-900 mb-4">Profile Match Analysis</h3>
-        <textarea
-          value={formData.profile_match_analysis}
-          onChange={(e) => handleInputChange('profile_match_analysis', e.target.value)}
-          placeholder="Analyze how your profile matches the job requirements. What are your strongest selling points? Where might you need to address gaps?"
-          rows={6}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
-      </div>
+      const preparationData = {
+        ...req.body,
+        user_id: userId
+      };
 
-      {/* Help Section */}
-      <div className="bg-blue-50 rounded-lg p-4">
-        <h3 className="text-sm font-medium text-blue-900 mb-2">💡 Tips for Profile Matching</h3>
-        <ul className="text-sm text-blue-800 space-y-1">
-          <li>• Focus on experiences that directly relate to the job requirements</li>
-          <li>• Quantify your achievements with specific numbers and results</li>
-          <li>• Identify transferable skills from different industries or roles</li>
-          <li>• Be honest about gaps and show how you plan to address them</li>
-          <li>• Prepare specific examples using the STAR method (Situation, Task, Action, Result)</li>
-        </ul>
-      </div>
-    </div>
-  );
-}
+      console.log('Inserting preparation data:', preparationData);
+
+      const { data, error } = await supabase
+        .from('preparations')
+        .insert([preparationData])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      res.status(201).json({ preparation: data });
+
+    } catch (error) {
+      logger.error('Create preparation error:', error);
+      console.error('Detailed error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create preparation';
+      res.status(500).json({ error: errorMessage });
+    }
+  }
+);
+
+// Update preparation
+router.put('/:id',
+  authenticateToken,
+  validateBody(updatePreparationSchema),
+  async (req: AuthRequest, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user!.id;
+
+      const { data, error } = await supabase
+        .from('preparations')
+        .update({
+          ...req.body,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return res.status(404).json({ error: 'Preparation not found' });
+        }
+        throw error;
+      }
+
+      res.json({ preparation: data });
+
+    } catch (error) {
+      logger.error('Update preparation error:', error);
+      res.status(500).json({ error: 'Failed to update preparation' });
+    }
+  }
+);
+
+// Delete preparation
+router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    const { error } = await supabase
+      .from('preparations')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+
+    res.json({ message: 'Preparation deleted successfully' });
+
+  } catch (error) {
+    logger.error('Delete preparation error:', error);
+    res.status(500).json({ error: 'Failed to delete preparation' });
+  }
+});
+
+export default router;
