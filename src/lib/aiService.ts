@@ -11,6 +11,8 @@ const router = express.Router();
 const createPreparationSchema = Joi.object({
   step_1_data: Joi.object().default({}),
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/scrape/job`, {
+      }
+      )
   step_4_data: Joi.object().default({}),
   step_5_data: Joi.object().default({}),
   step_6_data: Joi.object().default({})

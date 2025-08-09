@@ -1,365 +1,195 @@
-import React, { useState } from 'react';
-import { Globe, Loader2, Zap, Building, Target, Users, Briefcase } from 'lucide-react';
-import { aiService } from '../../lib/aiService';
-import { toast } from '../ui/Toast';
+import express from 'express';
+import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { validateBody } from '../middleware/validation';
+import { supabase } from '../utils/supabase';
+import { logger } from '../utils/logger';
+import Joi from 'joi';
 
-interface Step1Data {
-  jobTitle?: string;
-  companyName?: string;
-  jobUrl?: string;
-  jobDescription?: string;
-  keyRequirements?: string[];
-  keyResponsibilities?: string[];
-  companyInfo?: string;
-  salaryRange?: string;
-  location?: string;
-  workType?: string;
-}
+const router = express.Router();
 
-interface Step1Props {
-  data: Step1Data;
-  onUpdate: (data: Step1Data) => void;
-}
+// Validation schemas
+const createPreparationSchema = Joi.object({
+  title: Joi.string().min(1).required(),
+  job_url: Joi.string().uri().allow(''),
+  step_1_data: Joi.object().default({}),
+  step_2_data: Joi.object().default({}),
+  step_3_data: Joi.object().default({}),
+  step_4_data: Joi.object().default({}),
+  step_5_data: Joi.object().default({}),
+  step_6_data: Joi.object().default({})
+});
 
-const Step1JobAnalysis: React.FC<Step1Props> = ({ data, onUpdate }) => {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisMethod, setAnalysisMethod] = useState<'url' | 'text'>('url');
+const updatePreparationSchema = Joi.object({
+  title: Joi.string().min(1),
+  job_url: Joi.string().uri().allow(''),
+  step_1_data: Joi.object(),
+  step_2_data: Joi.object(),
+  step_3_data: Joi.object(),
+  step_4_data: Joi.object(),
+  step_5_data: Joi.object(),
+  step_6_data: Joi.object(),
+  is_complete: Joi.boolean()
+});
 
-  const handleChange = (field: keyof Step1Data, value: string | string[]) => {
-    onUpdate({ ...data, [field]: value });
-  };
+// Get all preparations for user
+router.get('/', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.id;
 
-  const addRequirement = () => {
-    const requirements = data.keyRequirements || [];
-    onUpdate({ ...data, keyRequirements: [...requirements, ''] });
-  };
+    const { data, error } = await supabase
+      .from('preparations')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false });
 
-  const updateRequirement = (index: number, value: string) => {
-    const requirements = [...(data.keyRequirements || [])];
-    requirements[index] = value;
-    onUpdate({ ...data, keyRequirements: requirements });
-  };
+    if (error) throw error;
 
-  const removeRequirement = (index: number) => {
-    const requirements = data.keyRequirements || [];
-    onUpdate({ ...data, keyRequirements: requirements.filter((_, i) => i !== index) });
-  };
+    res.json({ preparations: data || [] });
 
-  const addResponsibility = () => {
-    const responsibilities = data.keyResponsibilities || [];
-    onUpdate({ ...data, keyResponsibilities: [...responsibilities, ''] });
-  };
+  } catch (error) {
+    logger.error('Get preparations error:', error);
+    res.status(500).json({ error: 'Failed to fetch preparations' });
+  }
+});
 
-  const updateResponsibility = (index: number, value: string) => {
-    const responsibilities = [...(data.keyResponsibilities || [])];
-    responsibilities[index] = value;
-    onUpdate({ ...data, keyResponsibilities: responsibilities });
-  };
+// Get single preparation
+router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
 
-  const removeResponsibility = (index: number) => {
-    const responsibilities = data.keyResponsibilities || [];
-    onUpdate({ ...data, keyResponsibilities: responsibilities.filter((_, i) => i !== index) });
-  };
+    const { data, error } = await supabase
+      .from('preparations')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
 
-  const analyzeJobPosting = async () => {
-    if (analysisMethod === 'url' && !data.jobUrl) {
-      toast.error('Please enter a job posting URL');
-      return;
-    }
-    if (analysisMethod === 'text' && !data.jobDescription) {
-      toast.error('Please enter the job description text');
-      return;
-    }
-
-    setIsAnalyzing(true);
-    
-    try {
-      let analysisData;
-      
-      if (analysisMethod === 'url') {
-        analysisData = await aiService.analyzeJobFromUrl(data.jobUrl!);
-      } else {
-        analysisData = await aiService.analyzeJobFromText(data.jobDescription!);
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ error: 'Preparation not found' });
       }
-      
-      onUpdate({
-        ...data,
-        jobTitle: analysisData.jobTitle,
-        companyName: analysisData.companyName,
-        keyRequirements: analysisData.keyRequirements,
-        keyResponsibilities: analysisData.keyResponsibilities,
-        companyInfo: analysisData.companyInfo,
-        salaryRange: analysisData.salaryRange,
-        location: analysisData.location,
-        workType: analysisData.workType
-      });
-      
-      toast.success('Job posting analyzed successfully!');
-      
-    } catch (error) {
-      console.error('Job analysis error:', error);
-      toast.error('Failed to analyze job posting. Please try again.');
-    } finally {
-      setIsAnalyzing(false);
+      throw error;
     }
-  };
 
-  return (
-    <div className="space-y-8">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">Job Analysis</h2>
-        <p className="text-gray-600">
-          Analyze the job posting to understand the role, requirements, and company better.
-        </p>
-      </div>
+    res.json({ preparation: data });
 
-      {/* AI Analysis Section */}
-      <div className="bg-gradient-to-r from-purple-50 to-indigo-50 p-6 rounded-lg border border-purple-200">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <Zap className="h-5 w-5 text-purple-600 mr-2" />
-          AI-Powered Job Analysis
-        </h3>
-        
-        <div className="space-y-4">
-          <div className="flex space-x-4">
-            <label className="flex items-center">
-              <input
-                type="radio"
-                value="url"
-                checked={analysisMethod === 'url'}
-                onChange={(e) => setAnalysisMethod(e.target.value as 'url' | 'text')}
-                className="mr-2"
-              />
-              Analyze from URL
-            </label>
-            <label className="flex items-center">
-              <input
-                type="radio"
-                value="text"
-                checked={analysisMethod === 'text'}
-                onChange={(e) => setAnalysisMethod(e.target.value as 'url' | 'text')}
-                className="mr-2"
-              />
-              Analyze from Text
-            </label>
-          </div>
+  } catch (error) {
+    logger.error('Get preparation error:', error);
+    res.status(500).json({ error: 'Failed to fetch preparation' });
+  }
+});
 
-          {analysisMethod === 'url' ? (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Job Posting URL
-              </label>
-              <div className="flex space-x-2">
-                <div className="flex-1 relative">
-                  <Globe className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
-                  <input
-                    type="url"
-                    value={data.jobUrl || ''}
-                    onChange={(e) => handleChange('jobUrl', e.target.value)}
-                    placeholder="https://company.com/jobs/position"
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  />
-                </div>
-                <button
-                  onClick={analyzeJobPosting}
-                  disabled={isAnalyzing || !data.jobUrl}
-                  className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                >
-                  {isAnalyzing ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <Zap className="h-4 w-4 mr-2" />
-                  )}
-                  {isAnalyzing ? 'Analyzing...' : 'Analyze'}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Job Description Text
-              </label>
-              <div className="space-y-2">
-                <textarea
-                  value={data.jobDescription || ''}
-                  onChange={(e) => handleChange('jobDescription', e.target.value)}
-                  placeholder="Paste the complete job description here..."
-                  rows={6}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-                <button
-                  onClick={analyzeJobPosting}
-                  disabled={isAnalyzing || !data.jobDescription}
-                  className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                >
-                  {isAnalyzing ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <Zap className="h-4 w-4 mr-2" />
-                  )}
-                  {isAnalyzing ? 'Analyzing...' : 'Analyze'}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+// Create new preparation
+router.post('/', 
+  authenticateToken,
+  validateBody(createPreparationSchema),
+  async (req: AuthRequest, res) => {
+    try {
+      // Log incoming request for debugging
+      console.log('POST /api/preparations - Request body:', req.body);
+      console.log('POST /api/preparations - User:', req.user);
+      
+      const userId = req.user!.id;
+      const isPremium = req.user!.is_premium;
 
-      {/* Basic Information */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            <Briefcase className="inline h-4 w-4 mr-1" />
-            Job Title
-          </label>
-          <input
-            type="text"
-            value={data.jobTitle || ''}
-            onChange={(e) => handleChange('jobTitle', e.target.value)}
-            placeholder="e.g., Senior Software Engineer"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            <Building className="inline h-4 w-4 mr-1" />
-            Company Name
-          </label>
-          <input
-            type="text"
-            value={data.companyName || ''}
-            onChange={(e) => handleChange('companyName', e.target.value)}
-            placeholder="e.g., Tech Corp Inc."
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-          />
-        </div>
-      </div>
+      // Check if user has reached preparation limit (free users: 1, premium: unlimited)
+      if (!isPremium) {
+        const { count } = await supabase
+          .from('preparations')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId);
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Location
-          </label>
-          <input
-            type="text"
-            value={data.location || ''}
-            onChange={(e) => handleChange('location', e.target.value)}
-            placeholder="e.g., San Francisco, CA"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Work Type
-          </label>
-          <select
-            value={data.workType || ''}
-            onChange={(e) => handleChange('workType', e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-          >
-            <option value="">Select work type</option>
-            <option value="Remote">Remote</option>
-            <option value="On-site">On-site</option>
-            <option value="Hybrid">Hybrid</option>
-          </select>
-        </div>
-      </div>
+        if (count && count >= 1) {
+          return res.status(403).json({
+            error: 'Free users can only create 1 preparation. Upgrade to Premium for unlimited preparations.',
+            code: 'PREPARATION_LIMIT_REACHED'
+          });
+        }
+      }
 
-      {/* Key Requirements */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          <Target className="inline h-4 w-4 mr-1" />
-          Key Requirements
-        </label>
-        <div className="space-y-2">
-          {(data.keyRequirements || []).map((requirement, index) => (
-            <div key={index} className="flex space-x-2">
-              <input
-                type="text"
-                value={requirement}
-                onChange={(e) => updateRequirement(index, e.target.value)}
-                placeholder="e.g., 5+ years of React experience"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              />
-              <button
-                onClick={() => removeRequirement(index)}
-                className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-          <button
-            onClick={addRequirement}
-            className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
-          >
-            + Add Requirement
-          </button>
-        </div>
-      </div>
+      const preparationData = {
+        ...req.body,
+        user_id: userId
+      };
 
-      {/* Key Responsibilities */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          <Users className="inline h-4 w-4 mr-1" />
-          Key Responsibilities
-        </label>
-        <div className="space-y-2">
-          {(data.keyResponsibilities || []).map((responsibility, index) => (
-            <div key={index} className="flex space-x-2">
-              <input
-                type="text"
-                value={responsibility}
-                onChange={(e) => updateResponsibility(index, e.target.value)}
-                placeholder="e.g., Lead frontend development team"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              />
-              <button
-                onClick={() => removeResponsibility(index)}
-                className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-          <button
-            onClick={addResponsibility}
-            className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
-          >
-            + Add Responsibility
-          </button>
-        </div>
-      </div>
+      console.log('Inserting preparation data:', preparationData);
 
-      {/* Company Information */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Company Information
-        </label>
-        <textarea
-          value={data.companyInfo || ''}
-          onChange={(e) => handleChange('companyInfo', e.target.value)}
-          placeholder="Brief description of the company, its mission, values, and culture..."
-          rows={4}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-        />
-      </div>
+      const { data, error } = await supabase
+        .from('preparations')
+        .insert([preparationData])
+        .select()
+        .single();
 
-      {/* Salary Range */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Salary Range (Optional)
-        </label>
-        <input
-          type="text"
-          value={data.salaryRange || ''}
-          onChange={(e) => handleChange('salaryRange', e.target.value)}
-          placeholder="e.g., $120,000 - $150,000"
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-        />
-      </div>
-    </div>
-  );
-};
+      if (error) throw error;
 
-export default Step1JobAnalysis;
+      res.status(201).json({ preparation: data });
+
+    } catch (error) {
+      logger.error('Create preparation error:', error);
+      console.error('Detailed error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create preparation';
+      res.status(500).json({ error: errorMessage });
+    }
+  }
+);
+
+// Update preparation
+router.put('/:id',
+  authenticateToken,
+  validateBody(updatePreparationSchema),
+  async (req: AuthRequest, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user!.id;
+
+      const { data, error } = await supabase
+        .from('preparations')
+        .update({
+          ...req.body,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return res.status(404).json({ error: 'Preparation not found' });
+        }
+        throw error;
+      }
+
+      res.json({ preparation: data });
+
+    } catch (error) {
+      logger.error('Update preparation error:', error);
+      res.status(500).json({ error: 'Failed to update preparation' });
+    }
+  }
+);
+
+// Delete preparation
+router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    const { error } = await supabase
+      .from('preparations')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+
+    res.json({ message: 'Preparation deleted successfully' });
+
+  } catch (error) {
+    logger.error('Delete preparation error:', error);
+    res.status(500).json({ error: 'Failed to delete preparation' });
+  }
+});
+
+export default router;
