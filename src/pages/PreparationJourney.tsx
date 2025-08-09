@@ -1,5 +1,15 @@
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
+import Joi from 'joi';
+import { supabase } from '../config/supabase';
+import { validateBody } from '../middleware/validation';
+import { logger } from '../utils/logger';
+
+const router = express.Router();
+
+const createPreparationSchema = Joi.object({
+  title: Joi.string().required(),
+  job_url: Joi.string().uri().allow('').default(''),
   step_1_data: Joi.object().default({}),
   step_2_data: Joi.object().default({}),
   step_3_data: Joi.object().default({}),
@@ -178,6 +188,7 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
   } catch (error) {
     logger.error('Delete preparation error:', error);
     res.status(500).json({ error: 'Failed to delete preparation' });
+  }
 });
 
 export default router;
