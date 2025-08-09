@@ -1,141 +1,195 @@
 import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import compression from 'compression';
-import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
-import { createServer } from 'http';
+import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { validateBody } from '../middleware/validation';
+import { supabase } from '../utils/supabase';
+import { logger } from '../utils/logger';
+import Joi from 'joi';
 
-// Import routes
-import authRoutes from './routes/auth';
-import preparationRoutes from './routes/preparations';
-import pdfRoutes from './routes/pdf';
-import stripeRoutes from './routes/stripe';
-import uploadRoutes from './routes/upload';
-import userRoutes from './routes/users';
+const router = express.Router();
 
-// Import middleware
-import { errorHandler } from './middleware/errorHandler';
-import { logger } from './utils/logger';
-import { initializeRedis } from './utils/redis';
-
-// Load environment variables
-dotenv.config();
-
-const app = express();
-const server = createServer(app);
-const PORT = process.env.PORT || 3001;
-
-// Security middleware
-app.use(helmet({
-  contentSecurityPolicy: false, // Disable for API
-  crossOriginEmbedderPolicy: false
-}));
-
-// CORS configuration
-app.use(cors({
-  origin: (origin, callback) => {
-    if (
-      !origin ||                             // permet les outils comme curl
-      origin.includes('localhost') ||        // permet le développement local
-      origin.endsWith('.webcontainer-api.io') // permet tous les previews Bolt New
-    ) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
-// Compression
-app.use(compression());
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.',
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use('/api/', limiter);
-
-// Stripe webhook needs raw body
-app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
-
-// Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV
-  });
+// Validation schemas
+const createPreparationSchema = Joi.object({
+  title: Joi.string().min(1).required(),
+  job_url: Joi.string().uri().allow(''),
+  step_1_data: Joi.object().default({}),
+  step_2_data: Joi.object().default({}),
+  step_3_data: Joi.object().default({}),
+  step_4_data: Joi.object().default({}),
+  step_5_data: Joi.object().default({}),
+  step_6_data: Joi.object().default({})
 });
 
-// API routes
-app.use('/api/auth', authRoutes);
-app.use('/api/preparations', preparationRoutes);
-app.use('/api/pdf', pdfRoutes);
-app.use('/api/stripe', stripeRoutes);
-app.use('/api/upload', uploadRoutes);
-app.use('/api/users', userRoutes);
-
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({
-    error: 'Route not found',
-    path: req.originalUrl
-  });
+const updatePreparationSchema = Joi.object({
+  title: Joi.string().min(1),
+  job_url: Joi.string().uri().allow(''),
+  step_1_data: Joi.object(),
+  step_2_data: Joi.object(),
+  step_3_data: Joi.object(),
+  step_4_data: Joi.object(),
+  step_5_data: Joi.object(),
+  step_6_data: Joi.object(),
+  is_complete: Joi.boolean()
 });
 
-// Error handling middleware
-app.use(errorHandler);
-
-// Initialize services
-async function startServer() {
+// Get all preparations for user
+router.get('/', authenticateToken, async (req: AuthRequest, res) => {
   try {
-    // Initialize Redis connection
-    const redis = await initializeRedis();
-    if (!redis) {
-      logger.warn('⚠️  Starting without Redis - background jobs disabled');
-    }
-    
-    server.listen(PORT, () => {
-      logger.info(`🚀 Server running on port ${PORT}`);
-      logger.info(`📊 Environment: ${process.env.NODE_ENV}`);
-      logger.info(`🌐 CORS enabled for: ${process.env.FRONTEND_URL}`);
-    });
+    const userId = req.user!.id;
+
+    const { data, error } = await supabase
+      .from('preparations')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({ preparations: data || [] });
+
   } catch (error) {
-    logger.error('Failed to start server:', error);
-    process.exit(1);
+    logger.error('Get preparations error:', error);
+    res.status(500).json({ error: 'Failed to fetch preparations' });
   }
-}
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    logger.info('Process terminated');
-    process.exit(0);
-  });
 });
 
-process.on('SIGINT', () => {
-  logger.info('SIGINT received, shutting down gracefully');
-  server.close(() => {
-    logger.info('Process terminated');
-    process.exit(0);
-  });
+// Get single preparation
+router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    const { data, error } = await supabase
+      .from('preparations')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ error: 'Preparation not found' });
+      }
+      throw error;
+    }
+
+    res.json({ preparation: data });
+
+  } catch (error) {
+    logger.error('Get preparation error:', error);
+    res.status(500).json({ error: 'Failed to fetch preparation' });
+  }
 });
 
-startServer();
+// Create new preparation
+router.post('/', 
+  authenticateToken,
+  validateBody(createPreparationSchema),
+  async (req: AuthRequest, res) => {
+    try {
+      // Log incoming request for debugging
+      console.log('POST /api/preparations - Request body:', req.body);
+      console.log('POST /api/preparations - User:', req.user);
+      
+      const userId = req.user!.id;
+      const isPremium = req.user!.is_premium;
 
-export default app;
+      // Check if user has reached preparation limit (free users: 1, premium: unlimited)
+      if (!isPremium) {
+        const { count } = await supabase
+          .from('preparations')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId);
+
+        if (count && count >= 1) {
+          return res.status(403).json({
+            error: 'Free users can only create 1 preparation. Upgrade to Premium for unlimited preparations.',
+            code: 'PREPARATION_LIMIT_REACHED'
+          });
+        }
+      }
+
+      const preparationData = {
+        ...req.body,
+        user_id: userId
+      };
+
+      console.log('Inserting preparation data:', preparationData);
+
+      const { data, error } = await supabase
+        .from('preparations')
+        .insert([preparationData])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      res.status(201).json({ preparation: data });
+
+    } catch (error) {
+      logger.error('Create preparation error:', error);
+      console.error('Detailed error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create preparation';
+      res.status(500).json({ error: errorMessage });
+    }
+  }
+);
+
+// Update preparation
+router.put('/:id',
+  authenticateToken,
+  validateBody(updatePreparationSchema),
+  async (req: AuthRequest, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user!.id;
+
+      const { data, error } = await supabase
+        .from('preparations')
+        .update({
+          ...req.body,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return res.status(404).json({ error: 'Preparation not found' });
+        }
+        throw error;
+      }
+
+      res.json({ preparation: data });
+
+    } catch (error) {
+      logger.error('Update preparation error:', error);
+      res.status(500).json({ error: 'Failed to update preparation' });
+    }
+  }
+);
+
+// Delete preparation
+router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    const { error } = await supabase
+      .from('preparations')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+
+    res.json({ message: 'Preparation deleted successfully' });
+
+  } catch (error) {
+    logger.error('Delete preparation error:', error);
+    res.status(500).json({ error: 'Failed to delete preparation' });
+  }
+});
+
+export default router;
