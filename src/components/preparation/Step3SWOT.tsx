@@ -13,20 +13,28 @@ interface Step3Props {
 }
 
 const Step3SWOT: React.FC<Step3Props> = ({ data, onUpdate }) => {
+  // Normalize data to ensure all properties are arrays
+  const normalizedData: Step3Data = {
+    strengths: Array.isArray(data?.strengths) ? data.strengths : [],
+    weaknesses: Array.isArray(data?.weaknesses) ? data.weaknesses : [],
+    opportunities: Array.isArray(data?.opportunities) ? data.opportunities : [],
+    threats: Array.isArray(data?.threats) ? data.threats : []
+  };
+
   const handleItemChange = (category: keyof Step3Data, index: number, value: string) => {
-    const newData = { ...data };
+    const newData = { ...normalizedData };
     newData[category][index] = value;
     onUpdate(newData);
   };
 
   const addItem = (category: keyof Step3Data) => {
-    const newData = { ...data };
+    const newData = { ...normalizedData };
     newData[category] = [...newData[category], ''];
     onUpdate(newData);
   };
 
   const removeItem = (category: keyof Step3Data, index: number) => {
-    const newData = { ...data };
+    const newData = { ...normalizedData };
     newData[category] = newData[category].filter((_, i) => i !== index);
     onUpdate(newData);
   };
@@ -40,7 +48,7 @@ const Step3SWOT: React.FC<Step3Props> = ({ data, onUpdate }) => {
     <div className={`${bgColor} ${borderColor} border-2 rounded-lg p-6`}>
       <h3 className="text-xl font-semibold mb-4 text-gray-800">{title}</h3>
       <div className="space-y-3">
-        {data[category].map((item, index) => (
+        {normalizedData[category].map((item, index) => (
           <div key={index} className="flex gap-2">
             <input
               type="text"
