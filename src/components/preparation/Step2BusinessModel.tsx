@@ -1,195 +1,298 @@
-import express from 'express';
-import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { validateBody } from '../middleware/validation';
-import { supabase } from '../utils/supabase';
-import { logger } from '../utils/logger';
-import Joi from 'joi';
+import React, { useState, useEffect } from 'react';
+import { Building2, Users, Heart, DollarSign, Truck, Handshake, Wrench, Package, TrendingUp } from 'lucide-react';
 
-const router = express.Router();
+interface Step2Props {
+  data: any;
+  onUpdate: (data: any) => void;
+}
 
-// Validation schemas
-const createPreparationSchema = Joi.object({
-  title: Joi.string().min(1).required(),
-  job_url: Joi.string().uri().allow(''),
-  step_1_data: Joi.object().default({}),
-  step_2_data: Joi.object().default({}),
-  step_3_data: Joi.object().default({}),
-  step_4_data: Joi.object().default({}),
-  step_5_data: Joi.object().default({}),
-  step_6_data: Joi.object().default({})
-});
+interface BusinessModelData {
+  keyPartners: string[];
+  keyActivities: string[];
+  keyResources: string[];
+  valuePropositions: string[];
+  customerRelationships: string[];
+  channels: string[];
+  customerSegments: string[];
+  costStructure: string[];
+  revenueStreams: string[];
+}
 
-const updatePreparationSchema = Joi.object({
-  title: Joi.string().min(1),
-  job_url: Joi.string().uri().allow(''),
-  step_1_data: Joi.object(),
-  step_2_data: Joi.object(),
-  step_3_data: Joi.object(),
-  step_4_data: Joi.object(),
-  step_5_data: Joi.object(),
-  step_6_data: Joi.object(),
-  is_complete: Joi.boolean()
-});
+const Step2BusinessModel: React.FC<Step2Props> = ({ data, onUpdate }) => {
+  const [businessModel, setBusinessModel] = useState<BusinessModelData>({
+    keyPartners: [],
+    keyActivities: [],
+    keyResources: [],
+    valuePropositions: [],
+    customerRelationships: [],
+    channels: [],
+    customerSegments: [],
+    costStructure: [],
+    revenueStreams: [],
+    ...data
+  });
 
-// Get all preparations for user
-router.get('/', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const userId = req.user!.id;
+  useEffect(() => {
+    onUpdate(businessModel);
+  }, [businessModel, onUpdate]);
 
-    const { data, error } = await supabase
-      .from('preparations')
-      .select('*')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false });
-
-    if (error) throw error;
-
-    res.json({ preparations: data || [] });
-
-  } catch (error) {
-    logger.error('Get preparations error:', error);
-    res.status(500).json({ error: 'Failed to fetch preparations' });
-  }
-});
-
-// Get single preparation
-router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
-
-    const { data, error } = await supabase
-      .from('preparations')
-      .select('*')
-      .eq('id', id)
-      .eq('user_id', userId)
-      .single();
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return res.status(404).json({ error: 'Preparation not found' });
-      }
-      throw error;
+  const addItem = (section: keyof BusinessModelData, item: string) => {
+    if (item.trim()) {
+      setBusinessModel(prev => ({
+        ...prev,
+        [section]: [...prev[section], item.trim()]
+      }));
     }
+  };
 
-    res.json({ preparation: data });
+  const removeItem = (section: keyof BusinessModelData, index: number) => {
+    setBusinessModel(prev => ({
+      ...prev,
+      [section]: prev[section].filter((_, i) => i !== index)
+    }));
+  };
 
-  } catch (error) {
-    logger.error('Get preparation error:', error);
-    res.status(500).json({ error: 'Failed to fetch preparation' });
-  }
-});
+  const BusinessModelSection = ({ 
+    title, 
+    section, 
+    icon: Icon, 
+    placeholder, 
+    bgColor,
+    tips 
+  }: {
+    title: string;
+    section: keyof BusinessModelData;
+    icon: any;
+    placeholder: string;
+    bgColor: string;
+    tips: string[];
+  }) => {
+    const [newItem, setNewItem] = useState('');
 
-// Create new preparation
-router.post('/', 
-  authenticateToken,
-  validateBody(createPreparationSchema),
-  async (req: AuthRequest, res) => {
-    try {
-      // Log incoming request for debugging
-      console.log('POST /api/preparations - Request body:', req.body);
-      console.log('POST /api/preparations - User:', req.user);
-      
-      const userId = req.user!.id;
-      const isPremium = req.user!.is_premium;
+    const handleAdd = () => {
+      addItem(section, newItem);
+      setNewItem('');
+    };
 
-      // Check if user has reached preparation limit (free users: 1, premium: unlimited)
-      if (!isPremium) {
-        const { count } = await supabase
-          .from('preparations')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', userId);
-
-        if (count && count >= 1) {
-          return res.status(403).json({
-            error: 'Free users can only create 1 preparation. Upgrade to Premium for unlimited preparations.',
-            code: 'PREPARATION_LIMIT_REACHED'
-          });
-        }
+    const handleKeyPress = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        handleAdd();
       }
+    };
 
-      const preparationData = {
-        ...req.body,
-        user_id: userId
-      };
+    return (
+      <div className={`${bgColor} p-3 rounded-lg border h-full flex flex-col`}>
+        <div className="flex items-center gap-2 mb-2">
+          <Icon className="w-4 h-4" />
+          <h3 className="font-semibold text-sm">{title}</h3>
+        </div>
+        
+        <div className="flex-1 mb-3">
+          <div className="space-y-1 mb-2 max-h-32 overflow-y-auto">
+            {businessModel[section].map((item, index) => (
+              <div key={index} className="flex items-center justify-between bg-white/50 p-2 rounded text-xs">
+                <span className="flex-1">{item}</span>
+                <button
+                  onClick={() => removeItem(section, index)}
+                  className="text-red-500 hover:text-red-700 ml-2"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+          
+          <div className="flex gap-1">
+            <input
+              type="text"
+              value={newItem}
+              onChange={(e) => setNewItem(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder={placeholder}
+              className="flex-1 px-2 py-1 border rounded text-xs"
+            />
+            <button
+              onClick={handleAdd}
+              className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600"
+            >
+              +
+            </button>
+          </div>
+        </div>
 
-      console.log('Inserting preparation data:', preparationData);
+        <div className="text-xs text-gray-600">
+          <p className="font-medium mb-1">Research tips:</p>
+          <ul className="space-y-1">
+            {tips.map((tip, index) => (
+              <li key={index} className="text-xs">• {tip}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    );
+  };
 
-      const { data, error } = await supabase
-        .from('preparations')
-        .insert([preparationData])
-        .select()
-        .single();
+  return (
+    <div className="max-w-7xl mx-auto p-6">
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold mb-2">Business Model Canvas</h2>
+        <p className="text-gray-600">
+          Analyze the company's business model to understand how they create, deliver, and capture value.
+        </p>
+      </div>
 
-      if (error) throw error;
+      <div className="grid grid-cols-5 gap-4 h-[600px]">
+        {/* Column 1 */}
+        <div className="space-y-4">
+          <BusinessModelSection
+            title="Key Partners"
+            section="keyPartners"
+            icon={Handshake}
+            placeholder="Add partner..."
+            bgColor="bg-purple-50"
+            tips={[
+              "Strategic alliances",
+              "Joint ventures", 
+              "Supplier relationships",
+              "Key acquisitions"
+            ]}
+          />
+          <BusinessModelSection
+            title="Key Activities"
+            section="keyActivities"
+            icon={Wrench}
+            placeholder="Add activity..."
+            bgColor="bg-orange-50"
+            tips={[
+              "Production activities",
+              "Problem solving",
+              "Platform/network",
+              "Core processes"
+            ]}
+          />
+          <BusinessModelSection
+            title="Key Resources"
+            section="keyResources"
+            icon={Package}
+            placeholder="Add resource..."
+            bgColor="bg-green-50"
+            tips={[
+              "Physical assets",
+              "Intellectual property",
+              "Human resources",
+              "Financial resources"
+            ]}
+          />
+        </div>
 
-      res.status(201).json({ preparation: data });
+        {/* Column 2 - Value Propositions (spans 2 rows) */}
+        <div className="row-span-2">
+          <BusinessModelSection
+            title="Value Propositions"
+            section="valuePropositions"
+            icon={Heart}
+            placeholder="Add value prop..."
+            bgColor="bg-red-50"
+            tips={[
+              "Newness/innovation",
+              "Performance improvement",
+              "Customization",
+              "Getting the job done",
+              "Design & brand",
+              "Price & cost reduction",
+              "Risk reduction",
+              "Accessibility",
+              "Convenience/usability"
+            ]}
+          />
+        </div>
 
-    } catch (error) {
-      logger.error('Create preparation error:', error);
-      console.error('Detailed error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create preparation';
-      res.status(500).json({ error: errorMessage });
-    }
-  }
-);
+        {/* Column 3 */}
+        <div className="space-y-4">
+          <BusinessModelSection
+            title="Customer Relationships"
+            section="customerRelationships"
+            icon={Users}
+            placeholder="Add relationship..."
+            bgColor="bg-blue-50"
+            tips={[
+              "Personal assistance",
+              "Dedicated support",
+              "Self-service",
+              "Automated services",
+              "Communities",
+              "Co-creation"
+            ]}
+          />
+          <BusinessModelSection
+            title="Channels"
+            section="channels"
+            icon={Truck}
+            placeholder="Add channel..."
+            bgColor="bg-indigo-50"
+            tips={[
+              "Sales force",
+              "Web sales",
+              "Own stores",
+              "Partner stores",
+              "Wholesaler"
+            ]}
+          />
+        </div>
 
-// Update preparation
-router.put('/:id',
-  authenticateToken,
-  validateBody(updatePreparationSchema),
-  async (req: AuthRequest, res) => {
-    try {
-      const { id } = req.params;
-      const userId = req.user!.id;
+        {/* Column 4 */}
+        <div>
+          <BusinessModelSection
+            title="Customer Segments"
+            section="customerSegments"
+            icon={Building2}
+            placeholder="Add segment..."
+            bgColor="bg-teal-50"
+            tips={[
+              "Mass market",
+              "Niche market", 
+              "Segmented",
+              "Diversified",
+              "Multi-sided platforms"
+            ]}
+          />
+        </div>
+      </div>
 
-      const { data, error } = await supabase
-        .from('preparations')
-        .update({
-          ...req.body,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .eq('user_id', userId)
-        .select()
-        .single();
+      {/* Bottom Row */}
+      <div className="grid grid-cols-2 gap-4 mt-4">
+        <BusinessModelSection
+          title="Cost Structure"
+          section="costStructure"
+          icon={DollarSign}
+          placeholder="Add cost..."
+          bgColor="bg-yellow-50"
+          tips={[
+            "Fixed costs",
+            "Variable costs",
+            "Economies of scale",
+            "Economies of scope"
+          ]}
+        />
+        <BusinessModelSection
+          title="Revenue Streams"
+          section="revenueStreams"
+          icon={TrendingUp}
+          placeholder="Add revenue..."
+          bgColor="bg-emerald-50"
+          tips={[
+            "Asset sale",
+            "Usage fee",
+            "Subscription",
+            "Lending/leasing",
+            "Licensing",
+            "Brokerage fees",
+            "Advertising"
+          ]}
+        />
+      </div>
+    </div>
+  );
+};
 
-      if (error) {
-        if (error.code === 'PGRST116') {
-          return res.status(404).json({ error: 'Preparation not found' });
-        }
-        throw error;
-      }
-
-      res.json({ preparation: data });
-
-    } catch (error) {
-      logger.error('Update preparation error:', error);
-      res.status(500).json({ error: 'Failed to update preparation' });
-    }
-  }
-);
-
-// Delete preparation
-router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
-
-    const { error } = await supabase
-      .from('preparations')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
-
-    if (error) throw error;
-
-    res.json({ message: 'Preparation deleted successfully' });
-
-  } catch (error) {
-    logger.error('Delete preparation error:', error);
-    res.status(500).json({ error: 'Failed to delete preparation' });
-  }
-});
-
-export default router;
+export default Step2BusinessModel;
