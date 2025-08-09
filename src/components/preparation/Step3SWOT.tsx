@@ -1,194 +1,99 @@
-import express from 'express';
-import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { validateBody } from '../middleware/validation';
-import { supabase } from '../utils/supabase';
-import { logger } from '../utils/logger';
-import Joi from 'joi';
+import React from 'react';
 
-const router = express.Router();
+interface Step3Data {
+  strengths: string[];
+  weaknesses: string[];
+  opportunities: string[];
+  threats: string[];
+}
 
-// Validation schemas
-const createPreparationSchema = Joi.object({
-          <h2 className="text-3xl font-bold text-gray-800 mb-2">Company Strategy</h2>
-  step_1_data: Joi.object().default({}),
-  step_2_data: Joi.object().default({}),
-  step_3_data: Joi.object().default({}),
-  step_4_data: Joi.object().default({}),
-  step_5_data: Joi.object().default({}),
-  step_6_data: Joi.object().default({})
-});
+interface Step3Props {
+  data: Step3Data;
+  onUpdate: (data: Step3Data) => void;
+}
 
-const updatePreparationSchema = Joi.object({
-  title: Joi.string().min(1),
-  job_url: Joi.string().uri().allow(''),
-  step_1_data: Joi.object(),
-  step_2_data: Joi.object(),
-  step_3_data: Joi.object(),
-  step_4_data: Joi.object(),
-  step_5_data: Joi.object(),
-  step_6_data: Joi.object(),
-  is_complete: Joi.boolean()
-});
+const Step3SWOT: React.FC<Step3Props> = ({ data, onUpdate }) => {
+  const handleItemChange = (category: keyof Step3Data, index: number, value: string) => {
+    const newData = { ...data };
+    newData[category][index] = value;
+    onUpdate(newData);
+  };
 
-// Get all preparations for user
-router.get('/', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const userId = req.user!.id;
+  const addItem = (category: keyof Step3Data) => {
+    const newData = { ...data };
+    newData[category] = [...newData[category], ''];
+    onUpdate(newData);
+  };
 
-    const { data, error } = await supabase
-      .from('preparations')
-      .select('*')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false });
+  const removeItem = (category: keyof Step3Data, index: number) => {
+    const newData = { ...data };
+    newData[category] = newData[category].filter((_, i) => i !== index);
+    onUpdate(newData);
+  };
 
-    if (error) throw error;
+  const renderSection = (
+    title: string,
+    category: keyof Step3Data,
+    bgColor: string,
+    borderColor: string
+  ) => (
+    <div className={`${bgColor} ${borderColor} border-2 rounded-lg p-6`}>
+      <h3 className="text-xl font-semibold mb-4 text-gray-800">{title}</h3>
+      <div className="space-y-3">
+        {data[category].map((item, index) => (
+          <div key={index} className="flex gap-2">
+            <input
+              type="text"
+              value={item}
+              onChange={(e) => handleItemChange(category, index, e.target.value)}
+              placeholder={`Enter ${title.toLowerCase().slice(0, -1)}...`}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={() => removeItem(category, index)}
+              className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={() => addItem(category)}
+          className="w-full px-4 py-2 border-2 border-dashed border-gray-300 rounded-md text-gray-600 hover:border-gray-400 hover:text-gray-700 transition-colors"
+        >
+          + Add {title.slice(0, -1)}
+        </button>
+      </div>
+    </div>
+  );
 
-    res.json({ preparations: data || [] });
+  return (
+    <div className="max-w-6xl mx-auto p-6">
+      <div className="text-center mb-8">
+        <h2 className="text-3xl font-bold text-gray-800 mb-2">Company Strategy</h2>
+        <p className="text-gray-600">
+          Analyze the company's strategic position to understand how you can contribute to their success.
+        </p>
+      </div>
 
-  } catch (error) {
-    logger.error('Get preparations error:', error);
-    res.status(500).json({ error: 'Failed to fetch preparations' });
-  }
-});
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {renderSection('Strengths', 'strengths', 'bg-green-50', 'border-green-200')}
+        {renderSection('Weaknesses', 'weaknesses', 'bg-red-50', 'border-red-200')}
+        {renderSection('Opportunities', 'opportunities', 'bg-blue-50', 'border-blue-200')}
+        {renderSection('Threats', 'threats', 'bg-yellow-50', 'border-yellow-200')}
+      </div>
 
-// Get single preparation
-router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
+      <div className="mt-8 p-4 bg-gray-50 rounded-lg">
+        <h4 className="font-semibold text-gray-800 mb-2">💡 Tips for Company Strategy Analysis:</h4>
+        <ul className="text-sm text-gray-600 space-y-1">
+          <li>• Research recent company news, financial reports, and market position</li>
+          <li>• Consider industry trends and competitive landscape</li>
+          <li>• Think about how your skills can address their weaknesses or leverage their strengths</li>
+          <li>• Identify opportunities where you can make an immediate impact</li>
+        </ul>
+      </div>
+    </div>
+  );
+};
 
-    const { data, error } = await supabase
-      .from('preparations')
-      .select('*')
-      .eq('id', id)
-      .eq('user_id', userId)
-      .single();
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return res.status(404).json({ error: 'Preparation not found' });
-      }
-      throw error;
-    }
-
-    res.json({ preparation: data });
-
-  } catch (error) {
-    logger.error('Get preparation error:', error);
-    res.status(500).json({ error: 'Failed to fetch preparation' });
-  }
-});
-
-// Create new preparation
-router.post('/', 
-  authenticateToken,
-  validateBody(createPreparationSchema),
-  async (req: AuthRequest, res) => {
-    try {
-      // Log incoming request for debugging
-      console.log('POST /api/preparations - Request body:', req.body);
-      console.log('POST /api/preparations - User:', req.user);
-      
-      const userId = req.user!.id;
-      const isPremium = req.user!.is_premium;
-
-      // Check if user has reached preparation limit (free users: 1, premium: unlimited)
-      if (!isPremium) {
-        const { count } = await supabase
-          .from('preparations')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', userId);
-
-        if (count && count >= 1) {
-          return res.status(403).json({
-            error: 'Free users can only create 1 preparation. Upgrade to Premium for unlimited preparations.',
-            code: 'PREPARATION_LIMIT_REACHED'
-          });
-        }
-      }
-
-      const preparationData = {
-        ...req.body,
-        user_id: userId
-      };
-
-      console.log('Inserting preparation data:', preparationData);
-
-      const { data, error } = await supabase
-        .from('preparations')
-        .insert([preparationData])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      res.status(201).json({ preparation: data });
-
-    } catch (error) {
-      logger.error('Create preparation error:', error);
-      console.error('Detailed error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create preparation';
-      res.status(500).json({ error: errorMessage });
-    }
-  }
-);
-
-// Update preparation
-router.put('/:id',
-  authenticateToken,
-  validateBody(updatePreparationSchema),
-  async (req: AuthRequest, res) => {
-    try {
-      const { id } = req.params;
-      const userId = req.user!.id;
-
-      const { data, error } = await supabase
-        .from('preparations')
-        .update({
-          ...req.body,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .eq('user_id', userId)
-        .select()
-        .single();
-
-      if (error) {
-        if (error.code === 'PGRST116') {
-          return res.status(404).json({ error: 'Preparation not found' });
-        }
-        throw error;
-      }
-
-      res.json({ preparation: data });
-
-    } catch (error) {
-      logger.error('Update preparation error:', error);
-      res.status(500).json({ error: 'Failed to update preparation' });
-    }
-  }
-);
-
-// Delete preparation
-router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
-
-    const { error } = await supabase
-      .from('preparations')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
-
-    if (error) throw error;
-
-    res.json({ message: 'Preparation deleted successfully' });
-
-  } catch (error) {
-    logger.error('Delete preparation error:', error);
-    res.status(500).json({ error: 'Failed to delete preparation' });
-  }
-});
-
-export default router;
+export default Step3SWOT;
