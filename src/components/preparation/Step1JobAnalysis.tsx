@@ -13,7 +13,7 @@ interface Step1Props {
 }
 
 export default function Step1JobAnalysis({ data, onUpdate }: Step1Props) {
-  const [mode, setMode] = useState<'url' | 'text'>('url');
+  const [mode, setMode] = useState<'url' | 'text'>('text');
   const [jobUrl, setJobUrl] = useState('');
   const [jobText, setJobText] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -124,34 +124,36 @@ export default function Step1JobAnalysis({ data, onUpdate }: Step1Props) {
       <div className="bg-white rounded-lg shadow-sm border p-6">
         <h2 className="text-xl font-semibold text-gray-900 mb-4">Job Analysis</h2>
         
-        {/* Mode Selection */}
-        <div className="flex space-x-4 mb-6">
-          <button
-            onClick={() => setMode('url')}
-            className={`flex items-center px-4 py-2 rounded-lg border transition-colors ${
-              mode === 'url'
-                ? 'bg-blue-50 border-blue-200 text-blue-700'
-                : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <Link className="w-4 h-4 mr-2" />
-            Job URL
-          </button>
-          <button
-            onClick={() => setMode('text')}
-            className={`flex items-center px-4 py-2 rounded-lg border transition-colors ${
-              mode === 'text'
-                ? 'bg-blue-50 border-blue-200 text-blue-700'
-                : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            Job Text
-          </button>
-        </div>
+        {/* Mode Selection - Hidden but keeping URL mode in code */}
+        {false && (
+          <div className="flex space-x-4 mb-6">
+            <button
+              onClick={() => setMode('url')}
+              className={`flex items-center px-4 py-2 rounded-lg border transition-colors ${
+                mode === 'url'
+                  ? 'bg-blue-50 border-blue-200 text-blue-700'
+                  : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <Link className="w-4 h-4 mr-2" />
+              Job URL
+            </button>
+            <button
+              onClick={() => setMode('text')}
+              className={`flex items-center px-4 py-2 rounded-lg border transition-colors ${
+                mode === 'text'
+                  ? 'bg-blue-50 border-blue-200 text-blue-700'
+                  : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Job Text
+            </button>
+          </div>
+        )}
 
         {/* Input Section */}
-        {mode === 'url' ? (
+        {mode === 'url' && false ? (
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -184,13 +186,16 @@ export default function Step1JobAnalysis({ data, onUpdate }: Step1Props) {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Job Description Text
+                Job Description
               </label>
+              <p className="text-sm text-gray-600 mb-3">
+                Copy and paste the complete job description from the job posting (LinkedIn, company website, etc.)
+              </p>
               <div className="space-y-3">
                 <textarea
                   value={jobText}
                   onChange={(e) => setJobText(e.target.value)}
-                  placeholder="Paste the complete job description here..."
+                  placeholder="Paste the complete job description here including company name, job title, requirements, responsibilities, etc..."
                   rows={8}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
