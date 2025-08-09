@@ -10,6 +10,9 @@ const router = express.Router();
 // Validation schemas
 const createPreparationSchema = Joi.object({
             {(businessModel[section] || []).map((item, index) => (
+            )
+            )
+            }
   step_1_data: Joi.object().default({}),
   step_2_data: Joi.object().default({}),
   step_3_data: Joi.object().default({}),
