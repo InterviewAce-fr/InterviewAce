@@ -1,62 +1,195 @@
-{
-  "name": "interviewace-backend",
-  "version": "1.0.0",
-  "description": "Backend API for InterviewAce - Interview Preparation Platform",
-  "main": "dist/server.js",
-  "scripts": {
-    "start": "node dist/server.js",
-    "dev": "nodemon src/server.ts",
-    "build": "tsc",
-    "worker": "node dist/worker.js",
-    "test": "jest",
-    "heroku-postbuild": "npm run build && cp -r src/templates dist/templates && echo 'Build completed successfully'"
-  },
-  "engines": {
-    "node": "18.x",
-    "npm": "10.x"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.52.0",
-    "bull": "^4.11.5",
-    "compression": "^1.7.4",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "express-rate-limit": "^7.1.5",
-    "form-data": "^4.0.0",
-    "handlebars": "^4.7.8",
-    "helmet": "^7.1.0",
-    "joi": "^17.11.0",
-    "jsonwebtoken": "^9.0.2",
-    "mailgun.js": "^9.3.0",
-    "multer": "^2.0.0-rc.4",
-    "pdf-parse": "^1.1.1",
-    "puppeteer": "^22.8.2",
-    "redis": "^4.6.12",
-    "stripe": "^14.9.0",
-    "uuid": "^9.0.1",
-    "winston": "^3.11.0"
-  },
-  "devDependencies": {
-    "@types/compression": "^1.7.5",
-    "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
-    "@types/jsonwebtoken": "^9.0.5",
-    "@types/multer": "^1.4.11",
-    "@types/node": "^20.10.5",
-    "@types/uuid": "^9.0.7",
-    "nodemon": "^3.0.2",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
-  },
-  "keywords": [
-    "interview",
-    "preparation",
-    "api",
-    "pdf",
-    "stripe",
-    "supabase"
-  ],
-  "author": "InterviewAce Team",
-  "license": "MIT"
-}
+import express from 'express';
+import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { validateBody } from '../middleware/validation';
+import { supabase } from '../utils/supabase';
+import { logger } from '../utils/logger';
+import Joi from 'joi';
+
+const router = express.Router();
+
+// Validation schemas
+const createPreparationSchema = Joi.object({
+  title: Joi.string().min(1).required(),
+  job_url: Joi.string().uri().allow(''),
+  step_1_data: Joi.object().default({}),
+  step_2_data: Joi.object().default({}),
+  step_3_data: Joi.object().default({}),
+  step_4_data: Joi.object().default({}),
+  step_5_data: Joi.object().default({}),
+  step_6_data: Joi.object().default({})
+});
+
+const updatePreparationSchema = Joi.object({
+  title: Joi.string().min(1),
+  job_url: Joi.string().uri().allow(''),
+  step_1_data: Joi.object(),
+  step_2_data: Joi.object(),
+  step_3_data: Joi.object(),
+  step_4_data: Joi.object(),
+  step_5_data: Joi.object(),
+  step_6_data: Joi.object(),
+  is_complete: Joi.boolean()
+});
+
+// Get all preparations for user
+router.get('/', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.id;
+
+    const { data, error } = await supabase
+      .from('preparations')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({ preparations: data || [] });
+
+  } catch (error) {
+    logger.error('Get preparations error:', error);
+    res.status(500).json({ error: 'Failed to fetch preparations' });
+  }
+});
+
+// Get single preparation
+router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    const { data, error } = await supabase
+      .from('preparations')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ error: 'Preparation not found' });
+      }
+      throw error;
+    }
+
+    res.json({ preparation: data });
+
+  } catch (error) {
+    logger.error('Get preparation error:', error);
+    res.status(500).json({ error: 'Failed to fetch preparation' });
+  }
+});
+
+// Create new preparation
+router.post('/', 
+  authenticateToken,
+  validateBody(createPreparationSchema),
+  async (req: AuthRequest, res) => {
+    try {
+      // Log incoming request for debugging
+      console.log('POST /api/preparations - Request body:', req.body);
+      console.log('POST /api/preparations - User:', req.user);
+      
+      const userId = req.user!.id;
+      const isPremium = req.user!.is_premium;
+
+      // Check if user has reached preparation limit (free users: 1, premium: unlimited)
+      if (!isPremium) {
+        const { count } = await supabase
+          .from('preparations')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId);
+
+        if (count && count >= 1) {
+          return res.status(403).json({
+            error: 'Free users can only create 1 preparation. Upgrade to Premium for unlimited preparations.',
+            code: 'PREPARATION_LIMIT_REACHED'
+          });
+        }
+      }
+
+      const preparationData = {
+        ...req.body,
+        user_id: userId
+      };
+
+      console.log('Inserting preparation data:', preparationData);
+
+      const { data, error } = await supabase
+        .from('preparations')
+        .insert([preparationData])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      res.status(201).json({ preparation: data });
+
+    } catch (error) {
+      logger.error('Create preparation error:', error);
+      console.error('Detailed error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create preparation';
+      res.status(500).json({ error: errorMessage });
+    }
+  }
+);
+
+// Update preparation
+router.put('/:id',
+  authenticateToken,
+  validateBody(updatePreparationSchema),
+  async (req: AuthRequest, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user!.id;
+
+      const { data, error } = await supabase
+        .from('preparations')
+        .update({
+          ...req.body,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return res.status(404).json({ error: 'Preparation not found' });
+        }
+        throw error;
+      }
+
+      res.json({ preparation: data });
+
+    } catch (error) {
+      logger.error('Update preparation error:', error);
+      res.status(500).json({ error: 'Failed to update preparation' });
+    }
+  }
+);
+
+// Delete preparation
+router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    const { error } = await supabase
+      .from('preparations')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+
+    res.json({ message: 'Preparation deleted successfully' });
+
+  } catch (error) {
+    logger.error('Delete preparation error:', error);
+    res.status(500).json({ error: 'Failed to delete preparation' });
+  }
+});
+
+export default router;
