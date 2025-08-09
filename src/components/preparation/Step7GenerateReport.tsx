@@ -1,195 +1,121 @@
-import express from 'express';
-import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { validateBody } from '../middleware/validation';
-import { supabase } from '../utils/supabase';
-import { logger } from '../utils/logger';
-import Joi from 'joi';
+import React, { useState } from 'react';
+import { FileText, Loader2, Download, CheckCircle, Crown } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
-const router = express.Router();
+interface Step7GenerateReportProps {
+  data: any;
+  onUpdate: (data: any) => void;
+  preparation: any;
+}
 
-// Validation schemas
-const createPreparationSchema = Joi.object({
-  title: Joi.string().min(1).required(),
-  job_url: Joi.string().uri().allow(''),
-  step_1_data: Joi.object().default({}),
-  step_2_data: Joi.object().default({}),
-  step_3_data: Joi.object().default({}),
-  step_4_data: Joi.object().default({}),
-  step_5_data: Joi.object().default({}),
-  step_6_data: Joi.object().default({})
-});
+const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }) => {
+  const { user, session, profile } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobStatus, setJobStatus] = useState<string | null>(null);
 
-const updatePreparationSchema = Joi.object({
-  title: Joi.string().min(1),
-  job_url: Joi.string().uri().allow(''),
-  step_1_data: Joi.object(),
-  step_2_data: Joi.object(),
-  step_3_data: Joi.object(),
-  step_4_data: Joi.object(),
-  step_5_data: Joi.object(),
-  step_6_data: Joi.object(),
-  is_complete: Joi.boolean()
-});
-
-// Get all preparations for user
-router.get('/', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const userId = req.user!.id;
-
-    const { data, error } = await supabase
-      .from('preparations')
-      .select('*')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false });
-
-    if (error) throw error;
-
-    res.json({ preparations: data || [] });
-
-  } catch (error) {
-    logger.error('Get preparations error:', error);
-    res.status(500).json({ error: 'Failed to fetch preparations' });
-  }
-});
-
-// Get single preparation
-router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
-
-    const { data, error } = await supabase
-      .from('preparations')
-      .select('*')
-      .eq('id', id)
-      .eq('user_id', userId)
-      .single();
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return res.status(404).json({ error: 'Preparation not found' });
-      }
-      throw error;
+  const handleGenerateReport = async () => {
+    if (!preparation || !session?.access_token) {
+      alert('Authentication required to generate report.');
+      return;
     }
 
-    res.json({ preparation: data });
+    setLoading(true);
+    setJobId(null);
+    setJobStatus(null);
 
-  } catch (error) {
-    logger.error('Get preparation error:', error);
-    res.status(500).json({ error: 'Failed to fetch preparation' });
-  }
-});
-
-// Create new preparation
-router.post('/', 
-  authenticateToken,
-  validateBody(createPreparationSchema),
-  async (req: AuthRequest, res) => {
     try {
-      // Log incoming request for debugging
-      console.log('POST /api/preparations - Request body:', req.body);
-      console.log('POST /api/preparations - User:', req.user);
-      
-      const userId = req.user!.id;
-      const isPremium = req.user!.is_premium;
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/pdf/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          preparationData: {
+            id: preparation.id,
+            title: preparation.title,
+            job_url: preparation.job_url,
+            step_1_data: preparation.step_1_data,
+            step_2_data: preparation.step_2_data,
+            step_3_data: preparation.step_3_data,
+            step_4_data: preparation.step_4_data,
+            step_5_data: preparation.step_5_data,
+            step_6_data: preparation.step_6_data,
+          }
+        }),
+      });
 
-      // Check if user has reached preparation limit (free users: 1, premium: unlimited)
-      if (!isPremium) {
-        const { count } = await supabase
-          .from('preparations')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', userId);
-
-        if (count && count >= 1) {
-          return res.status(403).json({
-            error: 'Free users can only create 1 preparation. Upgrade to Premium for unlimited preparations.',
-            code: 'PREPARATION_LIMIT_REACHED'
-          });
-        }
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || errorData.error || 'Failed to generate PDF');
       }
 
-      const preparationData = {
-        ...req.body,
-        user_id: userId
-      };
-
-      console.log('Inserting preparation data:', preparationData);
-
-      const { data, error } = await supabase
-        .from('preparations')
-        .insert([preparationData])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      res.status(201).json({ preparation: data });
-
-    } catch (error) {
-      logger.error('Create preparation error:', error);
-      console.error('Detailed error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create preparation';
-      res.status(500).json({ error: errorMessage });
-    }
-  }
-);
-
-// Update preparation
-router.put('/:id',
-  authenticateToken,
-  validateBody(updatePreparationSchema),
-  async (req: AuthRequest, res) => {
-    try {
-      const { id } = req.params;
-      const userId = req.user!.id;
-
-      const { data, error } = await supabase
-        .from('preparations')
-        .update({
-          ...req.body,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .eq('user_id', userId)
-        .select()
-        .single();
-
-      if (error) {
-        if (error.code === 'PGRST116') {
-          return res.status(404).json({ error: 'Preparation not found' });
-        }
-        throw error;
+      if (profile?.is_premium) {
+        const data = await response.json();
+        setJobId(data.jobId);
+        setJobStatus('queued');
+        alert('PDF generation started. You will receive an email when ready.');
+      } else {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${preparation.title.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        alert('PDF downloaded successfully!');
       }
-
-      res.json({ preparation: data });
-
-    } catch (error) {
-      logger.error('Update preparation error:', error);
-      res.status(500).json({ error: 'Failed to update preparation' });
+    } catch (error: any) {
+      console.error('Error generating PDF:', error);
+      alert(error.message || 'Failed to generate PDF.');
+    } finally {
+      setLoading(false);
     }
-  }
-);
+  };
 
-// Delete preparation
-router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
+  return (
+    <div className="max-w-4xl mx-auto p-6 text-center">
+      <FileText className="w-16 h-16 text-blue-600 mx-auto mb-4" />
+      <h2 className="text-3xl font-bold text-gray-800 mb-2">Generate Your Report</h2>
+      <p className="text-gray-600 mb-6">
+        Click the button below to generate a professional PDF report of your preparation.
+      </p>
 
-    const { error } = await supabase
-      .from('preparations')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
+      <button
+        onClick={handleGenerateReport}
+        disabled={loading}
+        className="inline-flex items-center px-8 py-4 bg-blue-600 text-white rounded-lg font-semibold text-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {loading ? (
+          <Loader2 className="animate-spin h-6 w-6 mr-3" />
+        ) : (
+          <Download className="h-6 w-6 mr-3" />
+        )}
+        {loading ? 'Generating...' : 'Generate PDF Report'}
+      </button>
 
-    if (error) throw error;
+      {profile?.is_premium && jobId && ( 
+        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-800">
+          <Crown className="w-5 h-5 inline mr-2" />
+          <p className="font-medium">Report generation queued (Job ID: {jobId}).</p>
+          <p className="text-sm">You will receive an email with your report shortly.</p>
+        </div>
+      )}
 
-    res.json({ message: 'Preparation deleted successfully' });
+      <div className="mt-8 p-6 bg-gray-50 border border-gray-200 rounded-lg">
+        <h3 className="text-lg font-semibold text-gray-800 mb-3">💡 Report Tips</h3>
+        <ul className="text-gray-700 text-sm space-y-2 text-left">
+          <li>• Ensure all steps are completed for a comprehensive report.</li>
+          <li>• Premium users receive clean, watermark-free PDFs via email.</li>
+          <li>• Free users can download a watermarked PDF directly.</li>
+          <li>• Review your report before your interview to refresh your memory.</li>
+        </ul>
+      </div>
+    </div>
+  );
+};
 
-  } catch (error) {
-    logger.error('Delete preparation error:', error);
-    res.status(500).json({ error: 'Failed to delete preparation' });
-  }
-});
-
-export default router;
+export default Step7GenerateReport;
