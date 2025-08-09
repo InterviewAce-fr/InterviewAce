@@ -97,8 +97,37 @@ router.post('/job',
       } catch (fetchError) {
         logger.error('Failed to fetch URL:', fetchError);
         
-        res.status(400).json({
-          error: 'Failed to scrape job posting',
+        // Extract HTTP status from fetch error and propagate it to frontend
+        let statusCode = 400; // Default to 400 for generic errors
+        let errorMessage = 'Failed to scrape job posting';
+        
+        if (fetchError instanceof Error) {
+          const errorMsg = fetchError.message;
+          
+          // Check for specific HTTP status codes in error message
+          if (errorMsg.includes('HTTP 404') || errorMsg.includes('404')) {
+            statusCode = 404;
+            errorMessage = 'Job posting not found at the provided URL';
+          } else if (errorMsg.includes('HTTP 403') || errorMsg.includes('403')) {
+            statusCode = 403;
+            errorMessage = 'Access denied - the website is blocking automated requests';
+          } else if (errorMsg.includes('HTTP 500') || errorMsg.includes('500')) {
+            statusCode = 502; // Bad Gateway - external server error
+            errorMessage = 'The job posting website is experiencing issues';
+          } else if (errorMsg.includes('HTTP')) {
+            // Extract any other HTTP status codes
+            const statusMatch = errorMsg.match(/HTTP (\d{3})/);
+            if (statusMatch) {
+              const extractedStatus = parseInt(statusMatch[1]);
+              if (extractedStatus >= 400) {
+                statusCode = extractedStatus >= 500 ? 502 : extractedStatus;
+              }
+            }
+          }
+        }
+        
+        res.status(statusCode).json({
+          error: errorMessage,
           message: 'Unable to access the provided URL. The site may be blocking automated requests or require authentication. Please try copying and pasting the job description directly.',
           details: fetchError instanceof Error ? fetchError.message : 'Unknown error'
         });
