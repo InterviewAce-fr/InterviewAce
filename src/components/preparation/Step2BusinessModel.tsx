@@ -19,6 +19,8 @@ const createPreparationSchema = Joi.object({
     customerSegments: Array.isArray(data?.customerSegments) ? data.customerSegments : [],
     costStructure: Array.isArray(data?.costStructure) ? data.costStructure : [],
     revenueStreams: Array.isArray(data?.revenueStreams) ? data.revenueStreams : []
+}
+)
 
 const updatePreparationSchema = Joi.object({
   title: Joi.string().min(1),
