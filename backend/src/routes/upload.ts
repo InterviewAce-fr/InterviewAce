@@ -82,9 +82,11 @@ router.post('/cv',
 
     } catch (error) {
       logger.error('CV upload error:', error);
+      console.log('Supabase error details:', error);
       res.status(500).json({ 
         error: 'Failed to upload CV',
-        message: error instanceof Error ? error.message : 'Unknown error'
+        message: error instanceof Error ? error.message : 'Unknown error',
+        details: error
       });
     }
   }
@@ -134,6 +136,7 @@ router.delete('/cv', authenticateToken, async (req: AuthRequest, res) => {
 
   } catch (error) {
     logger.error('CV deletion error:', error);
+     console.log('Supabase deletion error details:', error);
     res.status(500).json({ error: 'Failed to delete CV' });
   }
 });
