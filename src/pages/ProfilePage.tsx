@@ -45,14 +45,14 @@ export default function ProfilePage() {
 
       // Upload file to Supabase Storage
       const { error: uploadError } = await supabase.storage
-        .from('user-files')
+        .from('resumes')
         .upload(filePath, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
-        .from('user-files')
+        .from('resumes')
         .getPublicUrl(filePath);
 
       // Update user profile with CV URL
@@ -85,7 +85,7 @@ export default function ProfilePage() {
 
       // Delete file from storage
       const { error: deleteError } = await supabase.storage
-        .from('user-files')
+        .from('resumes')
         .remove([filePath]);
 
       if (deleteError) throw deleteError;
