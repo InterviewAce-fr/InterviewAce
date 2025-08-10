@@ -1,22 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../lib/supabase';
 import { toast } from '../components/ui/Toast';
 import { 
   User, 
   Upload, 
   FileText, 
-  Save, 
   Loader2, 
-  Download,
   Trash2,
-  Eye,
   Settings
 } from 'lucide-react';
 
 export default function ProfilePage() {
   const { user, profile, refreshProfile } = useAuth();
-  const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -40,96 +35,57 @@ export default function ProfilePage() {
     setUploading(true);
 
     try {
-      // Create user record if it doesn't exist
-      const { error: userError } = await supabase
-        .from('users')
-        .upsert({
-          id: user?.id,
-          email: user?.email,
-        }, {
-          onConflict: 'id'
-        });
+      const formData = new FormData();
+      formData.append('cv', file);
 
-      if (userError && userError.code !== '23505') { // Ignore unique constraint violations
-        console.error('User creation error:', userError);
+      const response = await fetch('/api/upload/cv', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${user?.access_token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Upload failed');
       }
-
-      // Generate unique filename
-      const fileExt = file.name.split('.').pop() || 'pdf';
-      const resumeId = crypto.randomUUID();
-      const fileName = `${resumeId}.${fileExt}`;
-      const filePath = `${user?.id}/${fileName}`;
-
-      // Upload file to Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('resumes')
-        .upload(filePath, file, { upsert: true });
-
-      if (uploadError) throw uploadError;
-
-      // Insert resume record
-      const { error: insertError } = await supabase
-        .from('resumes')
-        .insert({
-          id: resumeId,
-          user_id: user?.id,
-          storage_path: filePath,
-          filename: file.name,
-          mime_type: file.mimetype || file.type,
-          file_size: file.size,
-          status: 'uploaded'
-        });
-
-      if (insertError) throw insertError;
-
-      // Get storage URL for display
-      const { data: { publicUrl } } = supabase.storage
-        .from('resumes')
-        .getPublicUrl(filePath);
       
+      await refreshProfile();
       toast.success('CV uploaded successfully!');
     } catch (error) {
       console.error('Error uploading CV:', error);
-      toast.error('Failed to upload CV');
+      toast.error(`Failed to upload CV: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setUploading(false);
     }
   };
 
   const handleDeleteCV = async () => {
-    // This function needs to be updated to work with the new resume system
-    toast.info('Please use the Resume page to manage your CVs');
-    return;
+    if (!profile?.cv_url) return;
+
+    try {
+      const response = await fetch('/api/upload/cv', {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${user?.access_token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Delete failed');
+      }
+
+      await refreshProfile();
+      toast.success('CV deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting CV:', error);
+      toast.error(`Failed to delete CV: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   };
 
-  const handleViewCV = () => {
-    // This function needs to be updated to work with the new resume system
-    toast.info('Please use the Resume page to view your CVs');
-    return;
-  };
-
-  // Check if user has any resumes (simplified check)
-  const [hasResumes, setHasResumes] = useState(false);
-
-  useEffect(() => {
-    const checkResumes = async () => {
-      if (!user) return;
-      
-      const { data } = await supabase
-        .from('resumes')
-        .select('id')
-        .eq('user_id', user.id)
-        .limit(1);
-      
-      setHasResumes(data && data.length > 0);
-    };
-    
-    checkResumes();
-  }, [user]);
-
-  const handleNavigateToResumes = () => {
-    window.location.href = '/resumes';
-  };
+  const hasCV = profile?.cv_url;
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -215,23 +171,35 @@ export default function ProfilePage() {
                 </h2>
               </div>
               <div className="p-6">
-                {hasResumes ? (
+                {hasCV ? (
                   <div className="border-2 border-dashed border-green-300 rounded-lg p-6 bg-green-50">
                     <div className="text-center">
                       <FileText className="h-12 w-12 text-green-600 mx-auto mb-4" />
                       <h3 className="text-lg font-medium text-green-900 mb-2">
-                        Resumes Uploaded
+                        CV Uploaded
                       </h3>
                       <p className="text-green-700 mb-6">
-                        You have resumes uploaded. Manage them on the Resume page.
+                        Your CV has been uploaded and is ready for use in interview preparations.
                       </p>
                       
-                      <button
-                        onClick={handleNavigateToResumes}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-md font-medium transition-colors"
-                      >
-                        Manage Resumes
-                      </button>
+                      <div className="space-x-4">
+                        <a
+                          href={profile.cv_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium transition-colors"
+                        >
+                          <FileText className="h-4 w-4" />
+                          <span>View CV</span>
+                        </a>
+                        <button
+                          onClick={handleDeleteCV}
+                          className="inline-flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-medium transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          <span>Delete CV</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -239,10 +207,10 @@ export default function ProfilePage() {
                     <div className="text-center">
                       <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                       <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        Upload Your First Resume
+                        Upload Your CV
                       </h3>
                       <p className="text-gray-600 mb-6">
-                        Upload your resume to get personalized AI assistance during interview preparation
+                        Upload your CV to get personalized AI assistance during interview preparation
                       </p>
                       
                       <div className="space-y-4">
@@ -262,15 +230,6 @@ export default function ProfilePage() {
                         <p className="text-xs text-gray-500">
                           PDF, DOC, DOCX, or TXT files only, max 10MB
                         </p>
-                        
-                        <div className="mt-4">
-                          <button
-                            onClick={handleNavigateToResumes}
-                            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                          >
-                            Or go to Resume page to manage uploads
-                          </button>
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -313,7 +272,7 @@ export default function ProfilePage() {
                 <div className="flex justify-between">
                   <span className="text-gray-600">Resumes</span>
                   <span className="font-medium">
-                    {hasResumes ? 'Uploaded' : 'None'}
+                    {hasCV ? 'Uploaded' : 'None'}
                   </span>
                 </div>
               </div>
@@ -323,11 +282,11 @@ export default function ProfilePage() {
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg shadow p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-3">Pro Tips</h3>
               <ul className="space-y-2 text-sm text-gray-600">
-                <li>• Upload multiple resume versions for different roles</li>
-                <li>• Use the Resume page to manage and activate profiles</li>
-                <li>• AI will automatically extract structured data</li>
+                <li>• Upload your most current CV for best results</li>
+                <li>• AI will automatically extract your profile data</li>
+                <li>• Your CV data will be used in interview preparations</li>
                 <li>• Premium users get unlimited AI boosts</li>
-                <li>• Your resumes are securely stored and encrypted</li>
+                <li>• Your CV is securely stored and encrypted</li>
               </ul>
             </div>
 
