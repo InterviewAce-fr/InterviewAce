@@ -11,10 +11,15 @@ const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: parseInt(process.env.MAX_FILE_SIZE || '5242880'), // 5MB default
+    fileSize: parseInt(process.env.MAX_FILE_SIZE || '10485760'), // 10MB default
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = process.env.ALLOWED_FILE_TYPES?.split(',') || ['application/pdf'];
+    const allowedTypes = process.env.ALLOWED_FILE_TYPES?.split(',') || [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain'
+    ];
     
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
