@@ -52,7 +52,7 @@ export default function ProfilePage() {
           const contentType = response.headers.get('content-type');
           if (contentType && contentType.includes('application/json')) {
             const errorData = await response.json();
-            errorMessage = errorData.message || errorMessage;
+            errorMessage = errorData.error || errorData.message || errorMessage;
           } else {
             const errorText = await response.text();
             errorMessage = errorText || errorMessage;
@@ -91,7 +91,7 @@ export default function ProfilePage() {
           const contentType = response.headers.get('content-type');
           if (contentType && contentType.includes('application/json')) {
             const errorData = await response.json();
-            errorMessage = errorData.message || errorMessage;
+            errorMessage = errorData.error || errorData.message || errorMessage;
           } else {
             const errorText = await response.text();
             errorMessage = errorText || errorMessage;
