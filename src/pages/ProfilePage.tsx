@@ -47,8 +47,21 @@ export default function ProfilePage() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Upload failed');
+        let errorMessage = 'Upload failed';
+        try {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            errorMessage = errorData.message || errorMessage;
+          } else {
+            const errorText = await response.text();
+            errorMessage = errorText || errorMessage;
+          }
+        } catch (parseError) {
+          // If parsing fails, use default error message
+          errorMessage = `Upload failed (${response.status})`;
+        }
+        throw new Error(errorMessage);
       }
       
       await refreshProfile();
@@ -73,8 +86,21 @@ export default function ProfilePage() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Delete failed');
+        let errorMessage = 'Delete failed';
+        try {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            errorMessage = errorData.message || errorMessage;
+          } else {
+            const errorText = await response.text();
+            errorMessage = errorText || errorMessage;
+          }
+        } catch (parseError) {
+          // If parsing fails, use default error message
+          errorMessage = `Delete failed (${response.status})`;
+        }
+        throw new Error(errorMessage);
       }
 
       await refreshProfile();
