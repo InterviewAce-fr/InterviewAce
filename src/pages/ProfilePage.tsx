@@ -10,12 +10,57 @@ import {
   Trash2,
   Settings
 } from 'lucide-react';
-import { v4 as uuidv4 } from 'uuid';
+
+// Single source of truth for storage bucket
+const STORAGE_BUCKET = 'resumes';
 
 export default function ProfilePage() {
   const { user, profile, refreshProfile } = useAuth();
   const [uploading, setUploading] = useState(false);
+  const [diagnosticsRun, setDiagnosticsRun] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const runDiagnostics = async (uid: string) => {
+    if (diagnosticsRun) return;
+    
+    console.log('=== SUPABASE STORAGE DIAGNOSTICS ===');
+    console.log('VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL);
+    
+    try {
+      // Check available buckets
+      const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+      if (bucketsError) {
+        console.error('Error listing buckets:', bucketsError);
+        throw new Error(`Failed to list buckets: ${bucketsError.message}`);
+      }
+      
+      console.log('Available buckets:', buckets?.map(b => b.name) || []);
+      
+      const targetBucket = buckets?.find(b => b.name === STORAGE_BUCKET);
+      if (!targetBucket) {
+        throw new Error(`Storage bucket '${STORAGE_BUCKET}' not found in this project. Create it in Supabase Storage or fix env vars.`);
+      }
+      
+      console.log(`✓ Bucket '${STORAGE_BUCKET}' found`);
+      
+      // Test list access to user's folder
+      const { data: files, error: listError } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .list(`cvs/${uid}`, { limit: 1 });
+      
+      if (listError) {
+        console.warn('List access test failed:', listError);
+      } else {
+        console.log(`✓ List access to cvs/${uid} successful, found ${files?.length || 0} files`);
+      }
+      
+      setDiagnosticsRun(true);
+      
+    } catch (error) {
+      console.error('Diagnostics failed:', error);
+      throw error;
+    }
+  };
 
   const handleCVUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -37,75 +82,44 @@ export default function ProfilePage() {
     setUploading(true);
 
     try {
-      console.log('=== CV Upload Diagnostics ===');
-      console.log('User:', user?.id);
+      // Auth precheck
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+      const uid = session.user.id;
+      
+      console.log('=== CV Upload Starting ===');
+      console.log('User ID:', uid);
       console.log('File:', { name: file.name, type: file.type, size: file.size });
-      console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
       
-      // Pre-upload diagnostics: List buckets
-      console.log('Checking available buckets...');
-      const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
-      if (bucketsError) {
-        console.error('Error listing buckets:', bucketsError);
-      } else {
-        console.log('Available buckets:', buckets?.map(b => b.name));
-        const resumesBucket = buckets?.find(b => b.name === 'resumes');
-        console.log('resumes bucket found:', !!resumesBucket);
-      }
+      // Run diagnostics on first upload
+      await runDiagnostics(uid);
       
-      // Pre-upload diagnostics: List existing files
-      if (user?.id) {
-        console.log(`Checking existing files in cvs/${user.id}/...`);
-        const { data: existingFiles, error: listError } = await supabase.storage
-          .from('resumes')
-          .list(`cvs/${user.id}`);
-        if (listError) {
-          console.error('Error listing existing files:', listError);
-        } else {
-          console.log('Existing files:', existingFiles?.map(f => f.name));
-        }
-      }
-      
-      // Generate upload path
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${uuidv4()}-${file.name}`;
-      const filePath = `cvs/${user?.id}/${fileName}`;
+      // Generate deterministic path
+      const fileName = `${crypto.randomUUID()}-${file.name}`;
+      const filePath = `cvs/${uid}/${fileName}`;
       console.log('Upload path:', filePath);
       
       // Upload using Supabase SDK
-      console.log('Starting upload...');
       const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('resumes')
+        .from(STORAGE_BUCKET)
         .upload(filePath, file, {
           contentType: file.type,
-          upsert: true
+          upsert: false
         });
 
       if (uploadError) {
-        console.error('Upload error details:', {
-          message: uploadError.message,
-          statusCode: uploadError.statusCode,
-          error: uploadError
-        });
-        
-        if (uploadError.statusCode === 404) {
-          console.error('=== 404 DIAGNOSTICS ===');
-          console.error('Current VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL);
-          console.error('Bucket name used: resumes');
-          console.error('This suggests a project/bucket mismatch');
-        }
-        
-        throw uploadError;
+        console.error('Upload error details:', uploadError);
+        throw new Error(uploadError.message || 'Upload failed');
       }
       
       console.log('Upload successful:', uploadData);
       
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
-        .from('resumes')
+        .from(STORAGE_BUCKET)
         .getPublicUrl(filePath);
-      
-      console.log('Public URL:', publicUrl);
       
       // Update user profile with CV URL using backend API
       const formData = new FormData();
@@ -145,13 +159,13 @@ export default function ProfilePage() {
       toast.success('CV uploaded successfully!');
     } catch (error) {
       console.error('Error uploading CV:', error);
-      console.error('Full error object:', {
-        message: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
-        name: error instanceof Error ? error.name : undefined,
-        cause: error instanceof Error ? error.cause : undefined
-      });
-      toast.error(`Failed to upload CV: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Show user-friendly error message
+      if (error instanceof Error && error.message.includes('Storage bucket')) {
+        toast.error(error.message);
+      } else {
+        toast.error(`Failed to upload CV: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     } finally {
       setUploading(false);
     }
