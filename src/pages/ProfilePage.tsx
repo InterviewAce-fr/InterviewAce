@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 import { toast } from '../components/ui/Toast';
 import { 
   User, 
@@ -9,6 +10,7 @@ import {
   Trash2,
   Settings
 } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 
 export default function ProfilePage() {
   const { user, profile, refreshProfile } = useAuth();
@@ -35,13 +37,84 @@ export default function ProfilePage() {
     setUploading(true);
 
     try {
+      console.log('=== CV Upload Diagnostics ===');
+      console.log('User:', user?.id);
+      console.log('File:', { name: file.name, type: file.type, size: file.size });
+      console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
+      
+      // Pre-upload diagnostics: List buckets
+      console.log('Checking available buckets...');
+      const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+      if (bucketsError) {
+        console.error('Error listing buckets:', bucketsError);
+      } else {
+        console.log('Available buckets:', buckets?.map(b => b.name));
+        const resumesBucket = buckets?.find(b => b.name === 'user-files');
+        console.log('user-files bucket found:', !!resumesBucket);
+      }
+      
+      // Pre-upload diagnostics: List existing files
+      if (user?.id) {
+        console.log(`Checking existing files in cvs/${user.id}/...`);
+        const { data: existingFiles, error: listError } = await supabase.storage
+          .from('user-files')
+          .list(`cvs/${user.id}`);
+        if (listError) {
+          console.error('Error listing existing files:', listError);
+        } else {
+          console.log('Existing files:', existingFiles?.map(f => f.name));
+        }
+      }
+      
+      // Generate upload path
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${uuidv4()}-${file.name}`;
+      const filePath = `cvs/${user?.id}/${fileName}`;
+      console.log('Upload path:', filePath);
+      
+      // Upload using Supabase SDK
+      console.log('Starting upload...');
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('user-files')
+        .upload(filePath, file, {
+          contentType: file.type,
+          upsert: true
+        });
+
+      if (uploadError) {
+        console.error('Upload error details:', {
+          message: uploadError.message,
+          statusCode: uploadError.statusCode,
+          error: uploadError
+        });
+        
+        if (uploadError.statusCode === 404) {
+          console.error('=== 404 DIAGNOSTICS ===');
+          console.error('Current VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL);
+          console.error('Bucket name used: user-files');
+          console.error('This suggests a project/bucket mismatch');
+        }
+        
+        throw uploadError;
+      }
+      
+      console.log('Upload successful:', uploadData);
+      
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('user-files')
+        .getPublicUrl(filePath);
+      
+      console.log('Public URL:', publicUrl);
+      
+      // Update user profile with CV URL using backend API
       const formData = new FormData();
       formData.append('cv', file);
 
-      const response = await fetch('/api/upload/cv', {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/upload/cv`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${user?.access_token}`,
+          'Authorization': `Bearer ${user?.access_token || ''}`,
         },
         body: formData,
       });
@@ -67,6 +140,7 @@ export default function ProfilePage() {
         throw new Error(errorMessage);
       }
       
+      console.log('Profile update successful');
       await refreshProfile();
       toast.success('CV uploaded successfully!');
     } catch (error) {
