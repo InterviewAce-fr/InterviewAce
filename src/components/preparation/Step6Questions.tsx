@@ -15,6 +15,7 @@ interface Step6QuestionsProps {
 }
 
 const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
+  const [activeTab, setActiveTab] = useState('behavioral');
   const [formData, setFormData] = useState({
     behavioral_questions: data.behavioral_questions || [],
     technical_questions: data.technical_questions || [],
@@ -51,86 +52,129 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
     onUpdate(updatedData);
   };
 
+  const addSuggestedQuestion = (question: string) => {
+    const category = activeTab + '_questions' as keyof typeof formData;
+    if (category !== 'questions_to_ask') {
+      const updatedQuestions = [...formData[category], { question, answer: '' }];
+      const updatedData = { ...formData, [category]: updatedQuestions };
+      setFormData(updatedData);
+      onUpdate(updatedData);
+    }
+  };
+
   const questionCategories = [
     {
-      key: 'behavioral_questions' as const,
-      title: 'Behavioral Questions',
-      icon: <Brain className="w-5 h-5" />,
-      color: 'bg-blue-50 border-blue-200',
-      textColor: 'text-blue-800',
+      key: 'behavioral',
+      title: 'Behavioral',
+      icon: <Brain className="w-4 h-4" />,
+      color: 'blue',
       description: 'Questions about past experiences and how you handled situations',
       examples: [
         "Tell me about a time when you had to work under pressure",
         "Describe a situation where you had to resolve a conflict",
-        "Give an example of when you showed leadership"
+        "Give an example of when you showed leadership",
+        "Tell me about a mistake you made and how you handled it",
+        "Describe a time when you had to adapt to change",
+        "Give an example of when you went above and beyond"
       ]
     },
     {
-      key: 'technical_questions' as const,
-      title: 'Technical Questions',
-      icon: <Code className="w-5 h-5" />,
-      color: 'bg-green-50 border-green-200',
-      textColor: 'text-green-800',
+      key: 'technical',
+      title: 'Technical',
+      icon: <Code className="w-4 h-4" />,
+      color: 'green',
       description: 'Questions about your technical skills and knowledge',
       examples: [
         "How would you approach solving [specific technical problem]?",
         "What technologies have you worked with recently?",
-        "Explain a complex technical concept in simple terms"
+        "Explain a complex technical concept in simple terms",
+        "How do you stay updated with new technologies?",
+        "Describe your development process",
+        "What's your experience with [specific technology]?"
       ]
     },
     {
-      key: 'situational_questions' as const,
-      title: 'Situational Questions',
-      icon: <Users className="w-5 h-5" />,
-      color: 'bg-purple-50 border-purple-200',
-      textColor: 'text-purple-800',
+      key: 'situational',
+      title: 'Situational',
+      icon: <Users className="w-4 h-4" />,
+      color: 'purple',
       description: 'Hypothetical scenarios to assess problem-solving skills',
       examples: [
         "How would you handle a difficult client?",
         "What would you do if you disagreed with your manager?",
-        "How would you prioritize competing deadlines?"
+        "How would you prioritize competing deadlines?",
+        "How would you handle a team member not pulling their weight?",
+        "What would you do if you discovered a major bug in production?",
+        "How would you approach a project with unclear requirements?"
       ]
     },
     {
-      key: 'company_questions' as const,
-      title: 'Company-Specific Questions',
-      icon: <Building className="w-5 h-5" />,
-      color: 'bg-yellow-50 border-yellow-200',
-      textColor: 'text-yellow-800',
+      key: 'company',
+      title: 'Company-Specific',
+      icon: <Building className="w-4 h-4" />,
+      color: 'yellow',
       description: 'Questions about the company, culture, and industry',
       examples: [
         "Why do you want to work for our company?",
         "What do you know about our recent developments?",
-        "How do you see our industry evolving?"
+        "How do you see our industry evolving?",
+        "What attracts you to our company culture?",
+        "How would you contribute to our mission?",
+        "What do you know about our competitors?"
       ]
     },
     {
-      key: 'career_questions' as const,
-      title: 'Career & Goals Questions',
-      icon: <TrendingUp className="w-5 h-5" />,
-      color: 'bg-indigo-50 border-indigo-200',
-      textColor: 'text-indigo-800',
+      key: 'career',
+      title: 'Career & Goals',
+      icon: <TrendingUp className="w-4 h-4" />,
+      color: 'indigo',
       description: 'Questions about your career aspirations and goals',
       examples: [
         "Where do you see yourself in 5 years?",
         "What are your career goals?",
-        "Why are you looking to change roles?"
+        "Why are you looking to change roles?",
+        "What motivates you in your career?",
+        "How does this role fit into your career plan?",
+        "What skills do you want to develop?"
       ]
     },
     {
-      key: 'personal_questions' as const,
-      title: 'Personal Questions',
-      icon: <Heart className="w-5 h-5" />,
-      color: 'bg-pink-50 border-pink-200',
-      textColor: 'text-pink-800',
+      key: 'personal',
+      title: 'Personal',
+      icon: <Heart className="w-4 h-4" />,
+      color: 'pink',
       description: 'Questions about your personality and work style',
       examples: [
         "What motivates you?",
         "How do you handle stress?",
-        "What are your strengths and weaknesses?"
+        "What are your strengths and weaknesses?",
+        "How would your colleagues describe you?",
+        "What's your ideal work environment?",
+        "How do you prefer to receive feedback?"
       ]
     }
   ];
+
+  const getColorClasses = (color: string, active: boolean = false) => {
+    const colors = {
+      blue: active ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100',
+      green: active ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100',
+      purple: active ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700 hover:bg-purple-100',
+      yellow: active ? 'bg-yellow-600 text-white' : 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100',
+      indigo: active ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100',
+      pink: active ? 'bg-pink-600 text-white' : 'bg-pink-50 text-pink-700 hover:bg-pink-100'
+    };
+    return colors[color as keyof typeof colors] || colors.blue;
+  };
+
+  const getCurrentCategory = () => {
+    return questionCategories.find(cat => cat.key === activeTab) || questionCategories[0];
+  };
+
+  const getCurrentQuestions = () => {
+    const category = activeTab + '_questions' as keyof typeof formData;
+    return formData[category] || [];
+  };
 
   const suggestedQuestionsToAsk = [
     "What does success look like in this role after 6 months?",
@@ -143,7 +187,7 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
     "Can you tell me about the team I'd be working with?"
   ];
 
-  const addSuggestedQuestion = (question: string) => {
+  const addSuggestedQuestionToAsk = (question: string) => {
     const updatedQuestions = [...formData.questions_to_ask, { question, reason: '' }];
     const updatedData = { ...formData, questions_to_ask: updatedQuestions };
     setFormData(updatedData);
@@ -168,86 +212,101 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
             Questions to Prepare Answers For
           </h3>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Horizontal Tabs */}
+          <div className="flex flex-wrap gap-2 mb-6 border-b">
             {questionCategories.map((category) => (
-              <div key={category.key} className={`${category.color} border-2 rounded-lg p-6`}>
-                <div className="flex items-center mb-4">
-                  <div className={category.textColor}>
-                    {category.icon}
-                  </div>
-                  <div className="ml-3">
-                    <h4 className={`text-lg font-semibold ${category.textColor}`}>
-                      {category.title}
-                    </h4>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {category.description}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Example Questions */}
-                <div className="mb-4">
-                  <p className="text-sm font-medium text-gray-700 mb-2">Common examples:</p>
-                  <ul className="text-xs text-gray-600 space-y-1">
-                    {category.examples.map((example, idx) => (
-                      <li key={idx}>• {example}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                {/* User's Questions */}
-                <div className="space-y-3">
-                  {formData[category.key].map((item: any, index: number) => (
-                    <div key={index} className="bg-white rounded-lg p-4 border border-gray-200">
-                      <div className="flex items-start justify-between mb-3">
-                        <h5 className="font-medium text-gray-800">Question {index + 1}</h5>
-                        <button
-                          onClick={() => removeQuestion(category.key, index)}
-                          className="px-2 py-1 text-red-600 hover:text-red-800 text-sm"
-                        >
-                          ×
-                        </button>
-                      </div>
-                      
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Question
-                          </label>
-                          <textarea
-                            value={item.question}
-                            onChange={(e) => updateQuestion(category.key, index, 'question', e.target.value)}
-                            placeholder="Enter the interview question..."
-                            className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                            rows={2}
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Your Answer
-                          </label>
-                          <textarea
-                            value={item.answer}
-                            onChange={(e) => updateQuestion(category.key, index, 'answer', e.target.value)}
-                            placeholder="Prepare your answer using the STAR method (Situation, Task, Action, Result)..."
-                            className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                            rows={4}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  
-                  <button
-                    onClick={() => addQuestion(category.key)}
-                    className={`w-full px-4 py-2 bg-white border-2 border-dashed ${category.color.replace('bg-', 'border-').replace('-50', '-300')} text-gray-600 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm`}
-                  >
-                    + Add {category.title.replace(' Questions', '')} Question
-                  </button>
-                </div>
-              </div>
+              <button
+                key={category.key}
+                onClick={() => setActiveTab(category.key)}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-t-lg font-medium transition-colors ${
+                  getColorClasses(category.color, activeTab === category.key)
+                }`}
+              >
+                {category.icon}
+                <span>{category.title}</span>
+              </button>
             ))}
+          </div>
+
+          {/* Active Tab Content */}
+          <div className="bg-gray-50 rounded-lg p-6">
+            <div className="mb-4">
+              <h4 className="text-lg font-semibold text-gray-800 mb-2">
+                {getCurrentCategory().title} Questions
+              </h4>
+              <p className="text-gray-600 text-sm mb-4">
+                {getCurrentCategory().description}
+              </p>
+            </div>
+
+            {/* Suggested Questions */}
+            <div className="mb-6">
+              <h5 className="font-medium text-gray-700 mb-3">💡 Common Questions (Click to Add)</h5>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {getCurrentCategory().examples.map((example, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => addSuggestedQuestion(example)}
+                    className="text-left p-3 bg-white border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors text-sm text-gray-700"
+                  >
+                    {example}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* User's Questions */}
+            <div className="space-y-4">
+              <h5 className="font-medium text-gray-700">Your Prepared Questions & Answers</h5>
+              {getCurrentQuestions().map((item: any, index: number) => (
+                <div key={index} className="bg-white rounded-lg p-4 border border-gray-200">
+                  <div className="flex items-start justify-between mb-3">
+                    <h6 className="font-medium text-gray-800">Question {index + 1}</h6>
+                    <button
+                      onClick={() => removeQuestion(activeTab + '_questions' as keyof typeof formData, index)}
+                      className="px-2 py-1 text-red-600 hover:text-red-800 text-sm"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Question
+                      </label>
+                      <textarea
+                        value={item.question}
+                        onChange={(e) => updateQuestion(activeTab + '_questions' as keyof typeof formData, index, 'question', e.target.value)}
+                        placeholder="Enter the interview question..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+                        rows={2}
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Your Answer
+                      </label>
+                      <textarea
+                        value={item.answer}
+                        onChange={(e) => updateQuestion(activeTab + '_questions' as keyof typeof formData, index, 'answer', e.target.value)}
+                        placeholder="Prepare your answer using the STAR method (Situation, Task, Action, Result)..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+                        rows={4}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              
+              <button
+                onClick={() => addQuestion(activeTab + '_questions' as keyof typeof formData)}
+                className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                + Add {getCurrentCategory().title} Question
+              </button>
+            </div>
           </div>
         </div>
 
@@ -321,7 +380,7 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
               {suggestedQuestionsToAsk.map((question, index) => (
                 <button
                   key={index}
-                  onClick={() => addSuggestedQuestion(question)}
+                  onClick={() => addSuggestedQuestionToAsk(question)}
                   className="text-left p-3 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors text-sm text-gray-700"
                 >
                   {question}

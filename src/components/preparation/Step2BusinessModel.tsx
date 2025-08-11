@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, X, HelpCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { toast } from '../ui/Toast';
 
 interface BusinessModelData {
   keyPartners: string[];
@@ -30,10 +31,30 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate 
     costStructure: Array.isArray(data?.costStructure) ? data.costStructure : [],
     revenueStreams: Array.isArray(data?.revenueStreams) ? data.revenueStreams : []
   });
+  const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   useEffect(() => {
-    onUpdate(businessModel);
-  }, [businessModel, onUpdate]);
+    if (hasUnsavedChanges) {
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+      }
+      
+      const timeout = setTimeout(() => {
+        onUpdate(businessModel);
+        setHasUnsavedChanges(false);
+        toast.success('Progress saved');
+      }, 1000); // Save after 1 second of inactivity
+      
+      setSaveTimeout(timeout);
+    }
+    
+    return () => {
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+      }
+    };
+  }, [businessModel, hasUnsavedChanges, onUpdate, saveTimeout]);
 
   const sections = [
     {
@@ -151,6 +172,7 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate 
       ...prev,
       [sectionKey]: [...prev[sectionKey], '']
     }));
+    setHasUnsavedChanges(true);
   };
 
   const updateItem = (sectionKey: keyof BusinessModelData, index: number, value: string) => {
@@ -158,6 +180,7 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate 
       ...prev,
       [sectionKey]: prev[sectionKey].map((item, i) => i === index ? value : item)
     }));
+    setHasUnsavedChanges(true);
   };
 
   const removeItem = (sectionKey: keyof BusinessModelData, index: number) => {
@@ -165,6 +188,7 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate 
       ...prev,
       [sectionKey]: prev[sectionKey].filter((_, i) => i !== index)
     }));
+    setHasUnsavedChanges(true);
   };
 
   return (

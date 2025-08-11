@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, Loader2, Zap, User, Award, Briefcase, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Upload, Loader2, Zap, User, Award, Briefcase, TrendingUp, TrendingDown, Minus, Building, GraduationCap } from 'lucide-react';
 import { aiService } from '../../lib/aiService';
 import { toast } from '../ui/Toast';
 
@@ -187,12 +187,131 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-gray-900 mb-4">Your Profile & Experience</h2>
         <p className="text-gray-600">
-          Analyze your CV and profile to understand how well you match the job requirements.
+          Compare what the company is looking for with what you bring to the table.
         </p>
+      </div>
+
+      {/* Two Column Comparison */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Left Column: What the Company is Looking For */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+          <h3 className="text-xl font-semibold text-blue-900 mb-6 flex items-center">
+            <Building className="h-6 w-6 mr-2" />
+            What the Company is Looking For
+          </h3>
+          
+          {/* Key Requirements */}
+          <div className="mb-6">
+            <h4 className="text-lg font-medium text-blue-800 mb-3">Key Requirements</h4>
+            <div className="space-y-2">
+              {(jobData?.keyRequirements || []).length === 0 ? (
+                <p className="text-blue-600 text-sm italic">Complete Step 1 Job Analysis to see requirements</p>
+              ) : (
+                (jobData.keyRequirements || []).map((requirement: string, index: number) => (
+                  <div key={index} className="bg-white p-3 rounded border border-blue-200">
+                    <p className="text-gray-800 text-sm">{requirement}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          
+          {/* Key Responsibilities */}
+          <div>
+            <h4 className="text-lg font-medium text-blue-800 mb-3">Key Responsibilities</h4>
+            <div className="space-y-2">
+              {(jobData?.keyResponsibilities || []).length === 0 ? (
+                <p className="text-blue-600 text-sm italic">Complete Step 1 Job Analysis to see responsibilities</p>
+              ) : (
+                (jobData.keyResponsibilities || []).map((responsibility: string, index: number) => (
+                  <div key={index} className="bg-white p-3 rounded border border-blue-200">
+                    <p className="text-gray-800 text-sm">{responsibility}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+        
+        {/* Right Column: What You're Bringing */}
+        <div className="bg-green-50 border border-green-200 rounded-lg p-6">
+          <h3 className="text-xl font-semibold text-green-900 mb-6 flex items-center">
+            <User className="h-6 w-6 mr-2" />
+            What You're Bringing to the Company
+          </h3>
+          
+          {/* Education */}
+          <div className="mb-6">
+            <h4 className="text-lg font-medium text-green-800 mb-3 flex items-center">
+              <GraduationCap className="h-5 w-5 mr-2" />
+              Education & Qualifications
+            </h4>
+            <div className="space-y-2">
+              {(data.education || []).map((edu, index) => (
+                <div key={index} className="flex space-x-2">
+                  <input
+                    type="text"
+                    value={edu}
+                    onChange={(e) => updateEducation(index, e.target.value)}
+                    placeholder="e.g., Bachelor's in Computer Science, MIT (2018)"
+                    className="flex-1 px-3 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+                  />
+                  <button
+                    onClick={() => removeEducation(index)}
+                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={addEducation}
+                className="text-green-600 hover:text-green-800 text-sm font-medium flex items-center"
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                Add Education
+              </button>
+            </div>
+          </div>
+          
+          {/* Experience */}
+          <div>
+            <h4 className="text-lg font-medium text-green-800 mb-3 flex items-center">
+              <Briefcase className="h-5 w-5 mr-2" />
+              Work Experience
+            </h4>
+            <div className="space-y-2">
+              {(data.experience || []).map((exp, index) => (
+                <div key={index} className="flex space-x-2">
+                  <input
+                    type="text"
+                    value={exp}
+                    onChange={(e) => updateExperience(index, e.target.value)}
+                    placeholder="e.g., Senior Developer at TechCorp (2020-2023)"
+                    className="flex-1 px-3 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+                  />
+                  <button
+                    onClick={() => removeExperience(index)}
+                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={addExperience}
+                className="text-green-600 hover:text-green-800 text-sm font-medium flex items-center"
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                Add Experience
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* AI CV Analysis Section */}
@@ -274,103 +393,6 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
             className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
           >
             + Add Skill
-          </button>
-        </div>
-      </div>
-
-      {/* Key Responsibilities */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          <Briefcase className="inline h-4 w-4 mr-1" />
-          Key Responsibilities (Current/Previous Roles)
-        </label>
-        <div className="space-y-2">
-          {(data.keyResponsibilities || []).map((responsibility, index) => (
-            <div key={index} className="flex space-x-2">
-              <input
-                type="text"
-                value={responsibility}
-                onChange={(e) => updateResponsibility(index, e.target.value)}
-                placeholder="e.g., Led a team of 5 developers to build scalable web applications"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              />
-              <button
-                onClick={() => removeResponsibility(index)}
-                className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-          <button
-            onClick={addResponsibility}
-            className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
-          >
-            + Add Responsibility
-          </button>
-        </div>
-      </div>
-
-      {/* Education */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Education
-        </label>
-        <div className="space-y-2">
-          {(data.education || []).map((edu, index) => (
-            <div key={index} className="flex space-x-2">
-              <input
-                type="text"
-                value={edu}
-                onChange={(e) => updateEducation(index, e.target.value)}
-                placeholder="e.g., Bachelor's in Computer Science, MIT (2018)"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              />
-              <button
-                onClick={() => removeEducation(index)}
-                className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-          <button
-            onClick={addEducation}
-            className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
-          >
-            + Add Education
-          </button>
-        </div>
-      </div>
-
-      {/* Experience */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Work Experience
-        </label>
-        <div className="space-y-2">
-          {(data.experience || []).map((exp, index) => (
-            <div key={index} className="flex space-x-2">
-              <input
-                type="text"
-                value={exp}
-                onChange={(e) => updateExperience(index, e.target.value)}
-                placeholder="e.g., Senior Developer at TechCorp (2020-2023)"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              />
-              <button
-                onClick={() => removeExperience(index)}
-                className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-          <button
-            onClick={addExperience}
-            className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
-          >
-            + Add Experience
           </button>
         </div>
       </div>
