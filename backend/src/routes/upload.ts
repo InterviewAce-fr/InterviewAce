@@ -30,8 +30,7 @@ const upload = multer({
 });
 
 // Upload CV
-router.post(
-  '/cv',
+router.post('/cv', 
   authenticateToken,
   upload.single('cv'),
   async (req: AuthRequest, res) => {
@@ -40,88 +39,55 @@ router.post(
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      const authUid = req.user!.id;                   // Supabase Auth user id (JWT sub)
-      const file = req.file;
+      const userId = req.user!.id;
+      const fileExt = req.file.originalname.split('.').pop();
+      const fileName = `${userId}-${uuidv4()}.${fileExt}`;
+      const filePath = `cvs/${fileName}`;
 
-      // 1) Build storage path
-      const path = `cvs/${authUid}/${uuidv4()}-${file.originalname}`;
-
-      // 2) Upload to Storage with Service Role
-      const { error: uploadError } = await supabase
-        .storage
+      // Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from('resumes')
-        .upload(path, file.buffer, { contentType: file.mimetype, upsert: false });
+        .upload(filePath, req.file.buffer, {
+          contentType: req.file.mimetype,
+          upsert: true
+        });
 
       if (uploadError) {
         logger.error('File upload error:', uploadError);
-        return res.status(400).json({ error: uploadError.message || 'Storage upload failed' });
+        throw uploadError;
       }
 
-      // 3) Ensure app-level user exists in public.users (auth_user_id -> id)
-      //    (If you already have public.ensure_user(), you could call it via a user-bound client;
-      //     here we inline it with Service Role for simplicity.)
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('auth_user_id', authUid)
-        .single();
-
-      let appUserId = existingUser?.id;
-      if (!appUserId) {
-        const { data: authUserRow, error: authErr } = await supabase
-          .from('user_profiles')               // lightweight way to get email if you mirror it here
-          .select('id')
-          .eq('id', authUid)
-          .single();
-
-        // If you prefer email, fetch from auth schema via RPC or store it on sign-up.
-        const { data: inserted, error: insertUserErr } = await supabase
-          .from('users')
-          .insert({
-            id: crypto.randomUUID(),           // or use gen_random_uuid() in DB; either is fine
-            auth_user_id: authUid,
-            email: null                        // optional if you don't have email here
-          })
-          .select('id')
-          .single();
-
-        if (insertUserErr || !inserted) {
-          logger.error('Failed to ensure public.users row:', insertUserErr);
-          return res.status(400).json({ error: 'Failed to ensure app user' });
-        }
-        appUserId = inserted.id;
-      }
-
-      // 4) Insert resume metadata with Service Role (RLS bypass)
-      const { data: resumeRow, error: resumeErr } = await supabase
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
         .from('resumes')
-        .insert({
-          user_id: appUserId,                 // <-- public.users.id (NOT auth uid)
-          storage_path: path,
-          original_filename: file.originalname,
-          mime_type: file.mimetype,
-          status: 'uploaded'
-        })
-        .select('id, storage_path')
-        .single();
+        .getPublicUrl(filePath);
 
-      if (resumeErr || !resumeRow) {
-        logger.error('Resume DB insert error:', resumeErr);
-        return res.status(400).json({ error: resumeErr?.message || 'Failed to create resume record' });
+      // Update user profile with CV URL
+      const { error: updateError } = await supabase
+        .from('user_profiles')
+        .update({ cv_url: publicUrl })
+        .eq('id', userId);
+
+      if (updateError) {
+        logger.error('Profile update error:', updateError);
+        throw updateError;
       }
 
-      // 5) (Optional) Public URL if bucket is public. If private, return path & sign URL later.
-      const { data: { publicUrl } } = supabase.storage.from('resumes').getPublicUrl(path);
-
-      return res.status(200).json({
+      res.json({
         message: 'CV uploaded successfully',
-        resumeId: resumeRow.id,
-        storagePath: resumeRow.storage_path,
-        publicUrl: publicUrl || null
+        url: publicUrl,
+        filename: req.file.originalname,
+        size: req.file.size
       });
-    } catch (error: any) {
+
+    } catch (error) {
       logger.error('CV upload error:', error);
-      return res.status(500).json({ error: error.message || 'Upload failed' });
+      console.log('Supabase error details:', error);
+      res.status(500).json({ 
+        error: 'Failed to upload CV',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        details: error
+      });
     }
   }
 );
