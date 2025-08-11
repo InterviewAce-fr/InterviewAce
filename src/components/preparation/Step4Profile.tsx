@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, Loader2, Zap, User, Award, Briefcase, TrendingUp, TrendingDown, Minus, Building, GraduationCap } from 'lucide-react';
+import { Upload, Loader2, Zap, User, Award, Briefcase, TrendingUp, TrendingDown, Minus, Building, GraduationCap, Plus, X } from 'lucide-react';
 import { aiService } from '../../lib/aiService';
 import { toast } from '../ui/Toast';
 
