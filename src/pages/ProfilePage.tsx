@@ -14,50 +14,52 @@ import {
 // Single source of truth for storage bucket
 const STORAGE_BUCKET = 'resumes';
 
+// Log environment variables once at module load
+console.log('=== SUPABASE CONFIG CHECK ===');
+console.log('VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL);
+const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+if (anonKey) {
+  console.log('VITE_SUPABASE_ANON_KEY:', `${anonKey.slice(0, 8)}...${anonKey.slice(-8)}`);
+} else {
+  console.log('VITE_SUPABASE_ANON_KEY: NOT SET');
+}
+console.log('================================');
+
 export default function ProfilePage() {
   const { user, profile, refreshProfile } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [diagnosticsRun, setDiagnosticsRun] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const runDiagnostics = async (uid: string) => {
+  const assertBucketExistsOrThrow = async () => {
     if (diagnosticsRun) return;
     
-    console.log('=== SUPABASE STORAGE DIAGNOSTICS ===');
-    console.log('VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL);
+    console.log('=== BUCKET EXISTENCE CHECK ===');
     
     try {
-      // Check available buckets
-      const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
-      if (bucketsError) {
-        console.error('Error listing buckets:', bucketsError);
-        throw new Error(`Failed to list buckets: ${bucketsError.message}`);
-      }
-      
-      console.log('Available buckets:', buckets?.map(b => b.name) || []);
-      
-      const targetBucket = buckets?.find(b => b.name === STORAGE_BUCKET);
-      if (!targetBucket) {
-        throw new Error(`Storage bucket '${STORAGE_BUCKET}' not found in this project. Create it in Supabase Storage or fix env vars.`);
-      }
-      
-      console.log(`✓ Bucket '${STORAGE_BUCKET}' found`);
-      
-      // Test list access to user's folder
-      const { data: files, error: listError } = await supabase.storage
+      // Client-safe bucket check - try to list root of bucket
+      const { data, error } = await supabase.storage
         .from(STORAGE_BUCKET)
-        .list(`cvs/${uid}`, { limit: 1 });
+        .list('', { limit: 1 });
       
-      if (listError) {
-        console.warn('List access test failed:', listError);
-      } else {
-        console.log(`✓ List access to cvs/${uid} successful, found ${files?.length || 0} files`);
+      if (error) {
+        console.error('Bucket check error:', error);
+        
+        // Only throw on 404 - bucket doesn't exist
+        if (error.message?.includes('404') || error.statusCode === '404') {
+          throw new Error(`Project/bucket mismatch. Verify the project URL matches the dashboard project where '${STORAGE_BUCKET}' exists and restart dev server.`);
+        }
+        
+        // For other errors, log but don't block upload attempt
+        console.warn('Bucket check failed but continuing:', error.message);
       }
+      
+      console.log(`✓ Bucket '${STORAGE_BUCKET}' accessible`);
       
       setDiagnosticsRun(true);
       
     } catch (error) {
-      console.error('Diagnostics failed:', error);
+      console.error('Bucket check failed:', error);
       throw error;
     }
   };
@@ -93,15 +95,15 @@ export default function ProfilePage() {
       console.log('User ID:', uid);
       console.log('File:', { name: file.name, type: file.type, size: file.size });
       
-      // Run diagnostics on first upload
-      await runDiagnostics(uid);
+      // Check bucket exists before upload
+      await assertBucketExistsOrThrow();
       
       // Generate deterministic path
       const fileName = `${crypto.randomUUID()}-${file.name}`;
       const filePath = `cvs/${uid}/${fileName}`;
       console.log('Upload path:', filePath);
       
-      // Upload using Supabase SDK
+      // Upload using Supabase SDK only
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from(STORAGE_BUCKET)
         .upload(filePath, file, {
@@ -111,47 +113,29 @@ export default function ProfilePage() {
 
       if (uploadError) {
         console.error('Upload error details:', uploadError);
+        
+        // Handle specific error cases
+        if (uploadError.message?.includes('404') || uploadError.statusCode === '404') {
+          throw new Error(`Project/bucket mismatch. Verify the project URL matches the dashboard project where '${STORAGE_BUCKET}' exists and restart dev server.`);
+        }
+        
         throw new Error(uploadError.message || 'Upload failed');
       }
       
       console.log('Upload successful:', uploadData);
       
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from(STORAGE_BUCKET)
-        .getPublicUrl(filePath);
-      
-      // Update user profile with CV URL using backend API
-      const formData = new FormData();
-      formData.append('cv', file);
+      // Update user profile with the storage path
+      const { error: updateError } = await supabase
+        .from('user_profiles')
+        .update({ 
+          cv_url: uploadData.path,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user!.id);
 
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/upload/cv`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${user?.access_token || ''}`,
-        },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        let errorMessage = `Upload failed (${response.status})`;
-        try {
-          const contentType = response.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
-            const errorData = await response.json();
-            console.error('Upload error response:', errorData);
-            errorMessage = errorData.error || errorData.message || errorMessage;
-          } else {
-            const errorText = await response.text();
-            console.error('Upload error text:', errorText);
-            errorMessage = errorText || errorMessage;
-          }
-        } catch (parseError) {
-          console.error('Error parsing upload response:', parseError);
-          // If parsing fails, use default error message
-          errorMessage = `Upload failed (${response.status}) - Could not parse error response`;
-        }
-        throw new Error(errorMessage);
+      if (updateError) {
+        console.error('Profile update error:', updateError);
+        throw new Error(`Failed to update profile: ${updateError.message}`);
       }
       
       console.log('Profile update successful');
@@ -160,12 +144,8 @@ export default function ProfilePage() {
     } catch (error) {
       console.error('Error uploading CV:', error);
       
-      // Show user-friendly error message
-      if (error instanceof Error && error.message.includes('Storage bucket')) {
-        toast.error(error.message);
-      } else {
-        toast.error(`Failed to upload CV: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
+      // Show the actual error message
+      toast.error(error instanceof Error ? error.message : 'Failed to upload CV');
     } finally {
       setUploading(false);
     }
@@ -175,45 +155,35 @@ export default function ProfilePage() {
     if (!profile?.cv_url) return;
 
     try {
-      const response = await fetch('/api/upload/cv', {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${user?.access_token}`,
-        },
-      });
+      // Delete from storage using SDK
+      const { error: deleteError } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .remove([profile.cv_url]);
 
-      if (!response.ok) {
-        let errorMessage = `Delete failed (${response.status})`;
-        try {
-          const contentType = response.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
-            const errorData = await response.json();
-            console.error('Delete error response:', errorData);
-            errorMessage = errorData.error || errorData.message || errorMessage;
-          } else {
-            const errorText = await response.text();
-            console.error('Delete error text:', errorText);
-            errorMessage = errorText || errorMessage;
-          }
-        } catch (parseError) {
-          console.error('Error parsing delete response:', parseError);
-          // If parsing fails, use default error message
-          errorMessage = `Delete failed (${response.status}) - Could not parse error response`;
-        }
-        throw new Error(errorMessage);
+      if (deleteError) {
+        console.error('Storage deletion error:', deleteError);
+        throw new Error(`Failed to delete file: ${deleteError.message}`);
+      }
+
+      // Update profile to remove CV URL
+      const { error: updateError } = await supabase
+        .from('user_profiles')
+        .update({ 
+          cv_url: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user!.id);
+
+      if (updateError) {
+        console.error('Profile update error:', updateError);
+        throw new Error(`Failed to update profile: ${updateError.message}`);
       }
 
       await refreshProfile();
       toast.success('CV deleted successfully!');
     } catch (error) {
       console.error('Error deleting CV:', error);
-      console.error('Full error object:', {
-        message: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
-        name: error instanceof Error ? error.name : undefined,
-        cause: error instanceof Error ? error.cause : undefined
-      });
-      toast.error(`Failed to delete CV: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(error instanceof Error ? error.message : 'Failed to delete CV');
     }
   };
 
