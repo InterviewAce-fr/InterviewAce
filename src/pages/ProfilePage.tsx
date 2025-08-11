@@ -47,19 +47,22 @@ export default function ProfilePage() {
       });
 
       if (!response.ok) {
-        let errorMessage = 'Upload failed';
+        let errorMessage = `Upload failed (${response.status})`;
         try {
           const contentType = response.headers.get('content-type');
           if (contentType && contentType.includes('application/json')) {
             const errorData = await response.json();
+            console.error('Upload error response:', errorData);
             errorMessage = errorData.error || errorData.message || errorMessage;
           } else {
             const errorText = await response.text();
+            console.error('Upload error text:', errorText);
             errorMessage = errorText || errorMessage;
           }
         } catch (parseError) {
+          console.error('Error parsing upload response:', parseError);
           // If parsing fails, use default error message
-          errorMessage = `Upload failed (${response.status})`;
+          errorMessage = `Upload failed (${response.status}) - Could not parse error response`;
         }
         throw new Error(errorMessage);
       }
@@ -68,6 +71,12 @@ export default function ProfilePage() {
       toast.success('CV uploaded successfully!');
     } catch (error) {
       console.error('Error uploading CV:', error);
+      console.error('Full error object:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        name: error instanceof Error ? error.name : undefined,
+        cause: error instanceof Error ? error.cause : undefined
+      });
       toast.error(`Failed to upload CV: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setUploading(false);
@@ -86,19 +95,22 @@ export default function ProfilePage() {
       });
 
       if (!response.ok) {
-        let errorMessage = 'Delete failed';
+        let errorMessage = `Delete failed (${response.status})`;
         try {
           const contentType = response.headers.get('content-type');
           if (contentType && contentType.includes('application/json')) {
             const errorData = await response.json();
+            console.error('Delete error response:', errorData);
             errorMessage = errorData.error || errorData.message || errorMessage;
           } else {
             const errorText = await response.text();
+            console.error('Delete error text:', errorText);
             errorMessage = errorText || errorMessage;
           }
         } catch (parseError) {
+          console.error('Error parsing delete response:', parseError);
           // If parsing fails, use default error message
-          errorMessage = `Delete failed (${response.status})`;
+          errorMessage = `Delete failed (${response.status}) - Could not parse error response`;
         }
         throw new Error(errorMessage);
       }
@@ -107,6 +119,12 @@ export default function ProfilePage() {
       toast.success('CV deleted successfully!');
     } catch (error) {
       console.error('Error deleting CV:', error);
+      console.error('Full error object:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        name: error instanceof Error ? error.name : undefined,
+        cause: error instanceof Error ? error.cause : undefined
+      });
       toast.error(`Failed to delete CV: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
