@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { toast } from 'react-hot-toast';
-import { createClient } from '@supabase/supabase-js';
-import { aiService } from '@/lib/aiService'; // adjust the path if needed
-import supabase from '@/lib/supabaseClient'; // your initialized browser client
+import { aiService } from '@/lib/aiService';
+import { supabase } from '@/lib/supabase';
 
 type ProfilePageProps = {
   refreshProfile?: () => Promise<void> | void;
