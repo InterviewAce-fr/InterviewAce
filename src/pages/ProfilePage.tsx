@@ -49,15 +49,15 @@ export default function ProfilePage() {
         console.error('Error listing buckets:', bucketsError);
       } else {
         console.log('Available buckets:', buckets?.map(b => b.name));
-        const resumesBucket = buckets?.find(b => b.name === 'user-files');
-        console.log('user-files bucket found:', !!resumesBucket);
+        const resumesBucket = buckets?.find(b => b.name === 'resumes');
+        console.log('resumes bucket found:', !!resumesBucket);
       }
       
       // Pre-upload diagnostics: List existing files
       if (user?.id) {
         console.log(`Checking existing files in cvs/${user.id}/...`);
         const { data: existingFiles, error: listError } = await supabase.storage
-          .from('user-files')
+          .from('resumes')
           .list(`cvs/${user.id}`);
         if (listError) {
           console.error('Error listing existing files:', listError);
@@ -75,7 +75,7 @@ export default function ProfilePage() {
       // Upload using Supabase SDK
       console.log('Starting upload...');
       const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('user-files')
+        .from('resumes')
         .upload(filePath, file, {
           contentType: file.type,
           upsert: true
@@ -91,7 +91,7 @@ export default function ProfilePage() {
         if (uploadError.statusCode === 404) {
           console.error('=== 404 DIAGNOSTICS ===');
           console.error('Current VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL);
-          console.error('Bucket name used: user-files');
+          console.error('Bucket name used: resumes');
           console.error('This suggests a project/bucket mismatch');
         }
         
@@ -102,7 +102,7 @@ export default function ProfilePage() {
       
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
-        .from('user-files')
+        .from('resumes')
         .getPublicUrl(filePath);
       
       console.log('Public URL:', publicUrl);
