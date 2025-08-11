@@ -84,7 +84,7 @@ export default function ProfilePage() {
     setUploading(true);
 
     try {
-      // Auth precheck
+      // Check auth session
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         throw new Error('Not authenticated');
@@ -95,67 +95,58 @@ export default function ProfilePage() {
       console.log('User ID:', uid);
       console.log('File:', { name: file.name, type: file.type, size: file.size });
       
-      // Ensure user exists in public.users table
-      const { data: publicUserId, error: userError } = await supabase
-        .rpc('ensure_user');
-      
-      if (userError) {
-        console.error('User creation error:', userError);
-        throw new Error(`Failed to ensure user exists: ${userError.message}`);
+      // Ensure app-level user exists; returns public.users.id
+      const { data: userId, error: euErr } = await supabase.rpc('ensure_user');
+      if (euErr || !userId) {
+        throw new Error(`Failed to ensure user exists: ${euErr?.message || 'no id returned'}`);
       }
       
-      if (!publicUserId) {
-        throw new Error('Failed to get user ID from ensure_user function');
-      }
-      
-      console.log('Public user ID:', publicUserId);
+      console.log('Public user ID:', userId);
       
       // Check bucket exists before upload
       await assertBucketExistsOrThrow();
       
-      // Generate deterministic path
-      const fileName = `${crypto.randomUUID()}-${file.name}`;
-      const filePath = `cvs/${uid}/${fileName}`;
-      console.log('Upload path:', filePath);
+      // Deterministic storage path
+      const path = `cvs/${uid}/${crypto.randomUUID()}-${file.name}`;
+      console.log('Upload path:', path);
       
-      // Upload using Supabase SDK only
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      // Upload to Storage (bucket must be 'resumes', via SDK only)
+      const { data: upData, error: upErr } = await supabase.storage
         .from(STORAGE_BUCKET)
-        .upload(filePath, file, {
+        .upload(path, file, {
           contentType: file.type,
           upsert: false
         });
 
-      if (uploadError) {
-        console.error('Upload error details:', uploadError);
+      if (upErr) {
+        console.error('Upload error details:', upErr);
         
         // Handle specific error cases
-        if (uploadError.message?.includes('404') || uploadError.statusCode === '404') {
+        if (upErr.message?.includes('404') || upErr.statusCode === '404') {
           throw new Error(`Project/bucket mismatch. Verify the project URL matches the dashboard project where '${STORAGE_BUCKET}' exists and restart dev server.`);
         }
         
-        throw new Error(uploadError.message || 'Upload failed');
+        throw new Error(upErr.message || 'Storage upload failed');
       }
       
-      console.log('Upload successful:', uploadData);
+      console.log('Upload successful:', upData);
       
-      // Create resume record in database
-      const { data: resumeData, error: resumeError } = await supabase
+      // Insert metadata row using the app user id (public.users.id)
+      const { data: resumeData, error: insErr } = await supabase
         .from('resumes')
         .insert({
-          user_id: publicUserId,
-          storage_path: uploadData.path,
-          filename: file.name,
+          user_id: userId,                 // <-- public.users.id from RPC
+          storage_path: path,
+          original_filename: file.name,
           mime_type: file.type,
-          file_size: file.size,
           status: 'uploaded'
         })
         .select()
         .single();
 
-      if (resumeError) {
-        console.error('Resume record creation error:', resumeError);
-        throw new Error(`Failed to create resume record: ${resumeError.message}`);
+      if (insErr) {
+        console.error('Resume record creation error:', insErr);
+        throw new Error(`Failed to create resume record: ${insErr.message}`);
       }
       
       console.log('Resume record created:', resumeData);
@@ -180,7 +171,7 @@ export default function ProfilePage() {
           .from('resume_profiles')
           .insert({
             resume_id: resumeData.id,
-            user_id: publicUserId,
+            user_id: userId,
             language: 'en', // Default to English
             person: extractedData.person || {},
             education: extractedData.education || [],
@@ -218,10 +209,16 @@ export default function ProfilePage() {
       const { error: updateError } = await supabase
         .from('user_profiles')
         .update({ 
-          cv_url: uploadData.path,
+          cv_url: path,
           updated_at: new Date().toISOString()
         })
         .eq('id', uid);
+        
+      if (updateError) {
+        console.error('Profile update error:', updateError);
+        // Don't throw here, resume upload was successful
+      }
+      
       await refreshProfile();
       toast.success('CV uploaded successfully!');
     } catch (error) {
@@ -244,20 +241,17 @@ export default function ProfilePage() {
       }
       const uid = session.user.id;
       
-      // Get public user ID
-      const { data: publicUserId, error: userError } = await supabase
-        .rpc('ensure_user');
-      
-      if (userError) {
-        console.error('User lookup error:', userError);
-        throw new Error(`Failed to get user ID: ${userError.message}`);
+      // Ensure app-level user exists; returns public.users.id
+      const { data: userId, error: euErr } = await supabase.rpc('ensure_user');
+      if (euErr || !userId) {
+        throw new Error(`Failed to get user ID: ${euErr?.message || 'no id returned'}`);
       }
       
       // Find and delete resume records
       const { data: resumes } = await supabase
         .from('resumes')
         .select('id, storage_path')
-        .eq('user_id', publicUserId)
+        .eq('user_id', userId)
         .eq('storage_path', profile.cv_url);
       
       if (resumes && resumes.length > 0) {
@@ -298,11 +292,6 @@ export default function ProfilePage() {
         throw new Error(`Failed to update profile: ${updateError.message}`);
       }
 
-      if (updateError) {
-        console.error('Profile update error:', updateError);
-        // Don't throw here, resume upload was successful
-      }
-      
       await refreshProfile();
       toast.success('CV deleted successfully!');
     } catch (error) {
