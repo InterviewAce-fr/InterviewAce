@@ -244,11 +244,20 @@ export default function ProfilePage() {
       }
       const uid = session.user.id;
       
+      // Get public user ID
+      const { data: publicUserId, error: userError } = await supabase
+        .rpc('ensure_user');
+      
+      if (userError) {
+        console.error('User lookup error:', userError);
+        throw new Error(`Failed to get user ID: ${userError.message}`);
+      }
+      
       // Find and delete resume records
       const { data: resumes } = await supabase
         .from('resumes')
         .select('id, storage_path')
-        .eq('user_id', uid)
+        .eq('user_id', publicUserId)
         .eq('storage_path', profile.cv_url);
       
       if (resumes && resumes.length > 0) {
