@@ -46,7 +46,7 @@ router.post('/cv',
 
       // Upload to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('user-files')
+        .from('resumes')
         .upload(filePath, req.file.buffer, {
           contentType: req.file.mimetype,
           upsert: true
@@ -59,7 +59,7 @@ router.post('/cv',
 
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
-        .from('user-files')
+        .from('resumes')
         .getPublicUrl(filePath);
 
       // Update user profile with CV URL
@@ -114,7 +114,7 @@ router.delete('/cv', authenticateToken, async (req: AuthRequest, res) => {
 
     // Delete from storage
     const { error: deleteError } = await supabase.storage
-      .from('user-files')
+      .from('resumes')
       .remove([filePath]);
 
     if (deleteError) {
