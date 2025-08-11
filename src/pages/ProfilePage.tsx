@@ -131,15 +131,16 @@ export default function ProfilePage() {
       
       console.log('Upload successful:', upData);
       
-      // Insert metadata row using the app user id (public.users.id)
+      // Insert metadata row (ownership = auth.uid() via DEFAULT)
       const { data: resumeData, error: insErr } = await supabase
         .from('resumes')
         .insert({
-          user_id: userId,                 // <-- public.users.id from RPC
+          // user_id: uid, // <- optionnel si tu as mis DEFAULT auth.uid() en DB
           storage_path: path,
           original_filename: file.name,
           mime_type: file.type,
-          status: 'uploaded'
+          status: 'uploaded',
+          // profile_id: userId, // <- si tu as une colonne pour lier à l'ID "public"
         })
         .select()
         .single();
