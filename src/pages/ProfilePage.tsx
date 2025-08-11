@@ -124,21 +124,89 @@ export default function ProfilePage() {
       
       console.log('Upload successful:', uploadData);
       
-      // Update user profile with the storage path
+      // Create resume record in database
+      const { data: resumeData, error: resumeError } = await supabase
+        .from('resumes')
+        .insert({
+          user_id: uid,
+          storage_path: uploadData.path,
+          filename: file.name,
+          mime_type: file.type,
+          file_size: file.size,
+          status: 'uploaded'
+        })
+        .select()
+        .single();
+
+      if (resumeError) {
+        console.error('Resume record creation error:', resumeError);
+        throw new Error(`Failed to create resume record: ${resumeError.message}`);
+      }
+      
+      console.log('Resume record created:', resumeData);
+      
+      // Process resume with AI extraction
+      try {
+        // Update status to extracting
+        await supabase
+          .from('resumes')
+          .update({ status: 'extracting' })
+          .eq('id', resumeData.id);
+        
+        // Extract text content (for now, just store filename as placeholder)
+        // In a real implementation, you'd use a PDF parser or OCR service
+        const resumeText = `Resume: ${file.name}\nFile Type: ${file.type}\nSize: ${file.size} bytes`;
+        
+        // Call AI service to extract structured data
+        const extractedData = await aiService.analyzeCVFromText(resumeText);
+        
+        // Create resume profile with extracted data
+        const { error: profileError } = await supabase
+          .from('resume_profiles')
+          .insert({
+            resume_id: resumeData.id,
+            user_id: uid,
+            language: 'en', // Default to English
+            person: extractedData.person || {},
+            education: extractedData.education || [],
+            experience: extractedData.experience || [],
+            skills: extractedData.skills || [],
+            raw_data: { originalText: resumeText },
+            is_active: true
+          });
+        
+        if (profileError) {
+          console.error('Resume profile creation error:', profileError);
+          // Don't throw here, file upload was successful
+        }
+        
+        // Update resume status to ready
+        await supabase
+          .from('resumes')
+          .update({ status: 'ready' })
+          .eq('id', resumeData.id);
+          
+      } catch (aiError) {
+        console.error('AI processing error:', aiError);
+        
+        // Update resume status to failed
+        await supabase
+          .from('resumes')
+          .update({ 
+            status: 'failed',
+            error_message: aiError instanceof Error ? aiError.message : 'AI processing failed'
+          })
+          .eq('id', resumeData.id);
+      }
+      
+      // Update user profile with latest resume path
       const { error: updateError } = await supabase
         .from('user_profiles')
         .update({ 
           cv_url: uploadData.path,
           updated_at: new Date().toISOString()
         })
-        .eq('id', user!.id);
-
-      if (updateError) {
-        console.error('Profile update error:', updateError);
-        throw new Error(`Failed to update profile: ${updateError.message}`);
-      }
-      
-      console.log('Profile update successful');
+        .eq('id', uid);
       await refreshProfile();
       toast.success('CV uploaded successfully!');
     } catch (error) {
@@ -155,6 +223,33 @@ export default function ProfilePage() {
     if (!profile?.cv_url) return;
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+      const uid = session.user.id;
+      
+      // Find and delete resume records
+      const { data: resumes } = await supabase
+        .from('resumes')
+        .select('id, storage_path')
+        .eq('user_id', uid)
+        .eq('storage_path', profile.cv_url);
+      
+      if (resumes && resumes.length > 0) {
+        // Delete resume profiles first (foreign key constraint)
+        await supabase
+          .from('resume_profiles')
+          .delete()
+          .eq('resume_id', resumes[0].id);
+        
+        // Delete resume record
+        await supabase
+          .from('resumes')
+          .delete()
+          .eq('id', resumes[0].id);
+      }
+      
       // Delete from storage using SDK
       const { error: deleteError } = await supabase.storage
         .from(STORAGE_BUCKET)
@@ -172,13 +267,18 @@ export default function ProfilePage() {
           cv_url: null,
           updated_at: new Date().toISOString()
         })
-        .eq('id', user!.id);
+        .eq('id', uid);
 
       if (updateError) {
         console.error('Profile update error:', updateError);
         throw new Error(`Failed to update profile: ${updateError.message}`);
       }
 
+      if (updateError) {
+        console.error('Profile update error:', updateError);
+        // Don't throw here, resume upload was successful
+      }
+      
       await refreshProfile();
       toast.success('CV deleted successfully!');
     } catch (error) {

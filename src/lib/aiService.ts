@@ -13,6 +13,13 @@ export interface CVAnalysisResult {
   experience: string[];
   education: string[];
   achievements: string[];
+  person?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    location?: string;
+    summary?: string;
+  };
 }
 
 export interface MatchAnalysisResult {
@@ -170,7 +177,14 @@ Return a JSON object with these exact fields:
   "skills": ["skill 1", "skill 2", ...],
   "experience": ["experience 1", "experience 2", ...],
   "education": ["education 1", "education 2", ...],
-  "achievements": ["achievement 1", "achievement 2", ...]
+  "achievements": ["achievement 1", "achievement 2", ...],
+  "person": {
+    "name": "Full Name",
+    "email": "email@example.com",
+    "phone": "phone number",
+    "location": "city, country",
+    "summary": "professional summary"
+  }
 }
 
 Focus on:
@@ -178,6 +192,8 @@ Focus on:
 - Work experience and roles
 - Educational background
 - Notable achievements and accomplishments
+- Personal contact information
+- Professional summary or objective
 
 Return only valid JSON, no additional text.`;
 
@@ -188,7 +204,8 @@ Return only valid JSON, no additional text.`;
         skills: Array.isArray(result.skills) ? result.skills : [],
         experience: Array.isArray(result.experience) ? result.experience : [],
         education: Array.isArray(result.education) ? result.education : [],
-        achievements: Array.isArray(result.achievements) ? result.achievements : []
+        achievements: Array.isArray(result.achievements) ? result.achievements : [],
+        person: result.person || {}
       };
     } catch (error) {
       console.error('CV analysis error:', error);
