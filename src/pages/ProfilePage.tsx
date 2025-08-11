@@ -95,6 +95,21 @@ export default function ProfilePage() {
       console.log('User ID:', uid);
       console.log('File:', { name: file.name, type: file.type, size: file.size });
       
+      // Ensure user exists in public.users table
+      const { data: publicUserId, error: userError } = await supabase
+        .rpc('ensure_user');
+      
+      if (userError) {
+        console.error('User creation error:', userError);
+        throw new Error(`Failed to ensure user exists: ${userError.message}`);
+      }
+      
+      if (!publicUserId) {
+        throw new Error('Failed to get user ID from ensure_user function');
+      }
+      
+      console.log('Public user ID:', publicUserId);
+      
       // Check bucket exists before upload
       await assertBucketExistsOrThrow();
       
@@ -128,7 +143,7 @@ export default function ProfilePage() {
       const { data: resumeData, error: resumeError } = await supabase
         .from('resumes')
         .insert({
-          user_id: uid,
+          user_id: publicUserId,
           storage_path: uploadData.path,
           filename: file.name,
           mime_type: file.type,
@@ -165,7 +180,7 @@ export default function ProfilePage() {
           .from('resume_profiles')
           .insert({
             resume_id: resumeData.id,
-            user_id: uid,
+            user_id: publicUserId,
             language: 'en', // Default to English
             person: extractedData.person || {},
             education: extractedData.education || [],
