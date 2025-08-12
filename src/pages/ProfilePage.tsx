@@ -116,6 +116,7 @@ export default function ProfilePage() {
       }
   
       await refreshProfile();
+      if (fileInputRef.current) fileInputRef.current.value = ''; // reset input
       toast.success('CV uploaded successfully!');
     } catch (error) {
       console.error('Error uploading CV:', error);
@@ -143,7 +144,7 @@ export default function ProfilePage() {
       try { payload = JSON.parse(bodyText); } catch {}
       
       if (!res.ok) {
-        const msg = payload?.message || payload?.error || bodyText || 'Upload failed';
+        const msg = payload?.message || payload?.error || bodyText || 'Delete failed'; // ← au lieu de 'Upload failed'
         throw new Error(msg);
       }
   
