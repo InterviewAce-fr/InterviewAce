@@ -70,17 +70,17 @@ router.post('/cv',
       const filePath = `cvs/${fileName}`;
 
       // Upload to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('resumes')
-        .upload(filePath, req.file.buffer, {
-          contentType: req.file.mimetype,
-          upsert: true
-        });
-
-      if (uploadError) {
-        logger.error('File upload error:', uploadError);
-        throw uploadError;
-      }
+      const { error: uploadError } = await supabase.storage
+          .from('resumes')
+          .upload(filePath, req.file.buffer, {
+            contentType: req.file.mimetype,
+            upsert: true
+          });
+        
+        if (uploadError) {
+          logger.error('File upload error:', uploadError);
+          throw uploadError;
+        }
 
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
