@@ -131,9 +131,44 @@ setImmediate(async () => {
     }
 
     const extracted = await analyzeCVFromText(text);
+    // on marque uniquement le statut (pas d'extracted_json en DB "resumes")
     await supabase.from('resumes')
-      .update({ status: 'done', extracted_json: extracted, error_message: null })
+      .update({ status: 'done', error_message: null })
       .eq('id', resumeId);
+
+    // (facultatif) s'assurer qu'un enregistrement existe dans public.users
+    const { data: publicUserId, error: euErr } = await supabase.rpc('ensure_user');
+    if (euErr || !publicUserId) {
+      // si tu es sûr que req.user!.id == users.id, tu peux utiliser userId directement
+      // sinon, loggue et continue avec userId par défaut
+      // throw new Error(`ensure_user failed: ${euErr?.message}`);
+    }
+    
+    // (facultatif) désactiver les anciens profils actifs de cet utilisateur
+    await supabase
+      .from('resume_profiles')
+      .update({ is_active: false })
+      .eq('user_id', publicUserId || userId);
+    
+    // insérer le nouveau profil
+    await supabase
+      .from('resume_profiles')
+      .insert({
+        resume_id: resumeId,
+        user_id: publicUserId || userId,
+        language: 'en', // ou détecte/stocke 'fr' si tu veux
+        person: extracted.person ?? {},
+        education: extracted.education ?? [],
+        experience: extracted.experience ?? [],
+        skills: extracted.skills ?? [],
+        raw_data: {
+          achievements: extracted.achievements ?? [],
+          source: 'upload.ts',
+          model: 'gpt-4o-mini',
+          text_length: text.length
+        },
+        is_active: true
+      });
 
   } catch (e: any) {
     if (resumeId) {
