@@ -148,7 +148,8 @@ export default function ProfilePage() {
       }
   
       await refreshProfile();
-      toast.success('CV deleted successfully!');
+      if (fileInputRef.current) fileInputRef.current.value = ''; // reset input
+      toast.success('CV uploaded successfully!');
     } catch (error) {
       console.error('Error deleting CV:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to delete CV');
