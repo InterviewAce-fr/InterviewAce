@@ -111,33 +111,25 @@ export default function ProfilePage() {
   };
 
   const handleDeleteCV = async () => {
-    if (!profile?.cv_url) return;
-  
+    setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not authenticated');
+      const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+      const session = (await supabase.auth.getSession()).data.session;
+      const token = session?.access_token || '';
   
-      const res = await fetch('/api/upload/cv', {
+      const res = await fetch(`${API_BASE}/upload/cv`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${session.access_token}` },
+        headers: { Authorization: `Bearer ${token}` }
       });
   
-      // Lire le corps UNE seule fois
-      const bodyText = await res.text();
-      let payload: any = null;
-      try { payload = JSON.parse(bodyText); } catch {}
-      
-      if (!res.ok) {
-        const msg = payload?.message || payload?.error || bodyText || 'Delete failed'; // ← au lieu de 'Upload failed'
-        throw new Error(msg);
-      }
-  
+      if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
       await refreshProfile();
-      if (fileInputRef.current) fileInputRef.current.value = ''; // reset input
-      toast.success('CV deleted successfully!');
-    } catch (error) {
-      console.error('Error deleting CV:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to delete CV');
+      toast.success('CV deleted successfully');
+    } catch (e) {
+      console.error('Error deleting CV:', e);
+      toast.error('Failed to delete CV');
+    } finally {
+      setLoading(false);
     }
   };
 
