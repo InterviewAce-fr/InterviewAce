@@ -4,6 +4,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { supabase } from '../utils/supabase';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
+import { analyzeCVFromText } from '../services/aiService.server';
 
 const router = express.Router();
 
