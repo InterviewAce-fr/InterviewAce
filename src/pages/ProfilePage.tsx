@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { toast } from '../components/ui/Toast';
@@ -28,7 +28,6 @@ console.log('================================');
 export default function ProfilePage() {
   const { user, profile, refreshProfile } = useAuth();
   const [uploading, setUploading] = useState(false);
-  const [diagnosticsRun, setDiagnosticsRun] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const assertBucketExistsOrThrow = async () => {
@@ -150,7 +149,7 @@ export default function ProfilePage() {
   
       await refreshProfile();
       if (fileInputRef.current) fileInputRef.current.value = ''; // reset input
-      toast.success('CV uploaded successfully!');
+      toast.success('CV deleted successfully!');
     } catch (error) {
       console.error('Error deleting CV:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to delete CV');
