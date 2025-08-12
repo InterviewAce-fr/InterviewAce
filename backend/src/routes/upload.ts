@@ -22,8 +22,9 @@ async function extractTextFromBuffer(mimetype: string, buf: Buffer): Promise<str
       mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
       mimetype === 'application/msword'
     ) {
-      const mammoth = await import('mammoth');
-      const { value } = await mammoth.default.convertToHtml({ buffer: buf });
+      const mammothMod: any = await import('mammoth');
+      const mammoth = mammothMod.default ?? mammothMod;
+      const { value } = await mammoth.convertToHtml({ buffer: buf });
       return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     }
 
@@ -36,22 +37,20 @@ async function extractTextFromBuffer(mimetype: string, buf: Buffer): Promise<str
 // Configure multer for file uploads
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: {
-    fileSize: parseInt(process.env.MAX_FILE_SIZE || '10485760'), // 10MB default
-  },
+  limits: { fileSize: parseInt(process.env.MAX_FILE_SIZE || '10485760') },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = process.env.ALLOWED_FILE_TYPES?.split(',') || [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'text/plain'
-    ];
-    
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error(`File type ${file.mimetype} not allowed`));
-    }
+    const allowedTypes =
+      process.env.ALLOWED_FILE_TYPES
+        ? process.env.ALLOWED_FILE_TYPES.split(',').map(t => t.trim())
+        : [
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'text/plain'
+          ];
+
+    if (allowedTypes.includes(file.mimetype)) cb(null, true);
+    else cb(new Error(`File type ${file.mimetype} not allowed`));
   }
 });
 
@@ -99,25 +98,69 @@ router.post('/cv',
         throw updateError;
       }
 
-      res.json({
-        message: 'CV uploaded successfully',
-        url: publicUrl,
-        filename: req.file.originalname,
-        size: req.file.size
-      });
+const { mimetype, buffer, originalname, size } = req.file;
 
-    } catch (error) {
-      logger.error('CV upload error:', error);
-      console.log('Supabase error details:', error);
-      res.status(500).json({ 
-        error: 'Failed to upload CV',
-        message: error instanceof Error ? error.message : 'Unknown error',
-        details: error
-      });
+setImmediate(async () => {
+  let resumeId: string | null = null;
+  try {
+    const { data: row, error: insertErr } = await supabase
+      .from('resumes')
+      .insert({
+        user_id: userId,
+        storage_path: filePath,
+        url: publicUrl,
+        status: 'processing',
+        error_message: null,
+        extracted_json: null,
+        original_filename: originalname,   // ⬅️ utilise les variables capturées
+        mimetype,                          // ⬅️
+        size_bytes: size                   // ⬅️
+      })
+      .select('id')
+      .single();
+
+    if (insertErr || !row?.id) throw insertErr || new Error('insert resumes failed');
+    resumeId = row.id;
+
+    const text = await extractTextFromBuffer(mimetype, buffer); // ⬅️
+    if (!text || text.length < 20) {
+      await supabase.from('resumes')
+        .update({ status: 'error', error_message: 'Text extraction failed or unsupported file type' })
+        .eq('id', resumeId);
+      return;
+    }
+
+    const extracted = await analyzeCVFromText(text);
+    await supabase.from('resumes')
+      .update({ status: 'done', extracted_json: extracted, error_message: null })
+      .eq('id', resumeId);
+
+  } catch (e: any) {
+    if (resumeId) {
+      await supabase.from('resumes')
+        .update({ status: 'error', error_message: e?.message || 'Unknown error' })
+        .eq('id', resumeId);
     }
   }
-);
+});
 
+// ✅ répondre au client comme avant
+res.json({
+  message: 'CV uploaded successfully',
+  url: publicUrl,
+  filename: req.file.originalname,
+  size: req.file.size
+});
+
+} catch (error) {
+  logger.error('CV upload error:', error);
+  res.status(500).json({
+    error: 'Failed to upload CV',
+    message: error instanceof Error ? error.message : 'Unknown error'
+  });
+}
+});
+      
 // Delete CV
 router.delete('/cv', authenticateToken, async (req: AuthRequest, res) => {
   try {
