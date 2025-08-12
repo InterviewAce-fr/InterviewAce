@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { logger } from './logger';
 
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // Declare supabase at top level to ensure it's always exported
 let supabase: any;
