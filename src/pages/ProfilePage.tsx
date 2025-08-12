@@ -105,14 +105,14 @@ export default function ProfilePage() {
         // ⚠️ ne pas définir Content-Type, FormData s’en charge
       });
   
-      // Parse robuste
-      const payload = await res.json().catch(async () => {
-        const text = await res.text();
-        throw new Error(text || 'Upload failed');
-      });
-  
+      // Lire le corps UNE seule fois
+      const bodyText = await res.text();
+      let payload: any = null;
+      try { payload = JSON.parse(bodyText); } catch {}
+      
       if (!res.ok) {
-        throw new Error(payload?.message || 'Upload failed');
+        const msg = payload?.message || payload?.error || bodyText || 'Upload failed';
+        throw new Error(msg);
       }
   
       await refreshProfile();
