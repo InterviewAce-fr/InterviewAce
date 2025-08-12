@@ -8,6 +8,31 @@ import { analyzeCVFromText } from '../services/aiService.server';
 
 const router = express.Router();
 
+async function extractTextFromBuffer(mimetype: string, buf: Buffer): Promise<string> {
+  try {
+    if (mimetype === 'text/plain') return buf.toString('utf8');
+
+    if (mimetype === 'application/pdf') {
+      const pdfParse = (await import('pdf-parse')).default;
+      const data = await pdfParse(buf);
+      return data.text || '';
+    }
+
+    if (
+      mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      mimetype === 'application/msword'
+    ) {
+      const mammoth = await import('mammoth');
+      const { value } = await mammoth.default.convertToHtml({ buffer: buf });
+      return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    return '';
+  } catch {
+    return '';
+  }
+}
+
 // Configure multer for file uploads
 const upload = multer({
   storage: multer.memoryStorage(),
