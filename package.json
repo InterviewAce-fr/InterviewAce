@@ -12,7 +12,9 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.38.4",
     "lucide-react": "^0.263.1",
-    "openai": "^4.20.1",
+    "mammoth": "^1.10.0",
+    "openai": "^4.104.0",
+    "pdf-parse": "^1.1.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hot-toast": "^2.5.2",
