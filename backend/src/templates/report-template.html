@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interview Preparation Report - {{title}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #fff;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 30px 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            position: relative;
+        }
+        
+        {{#unless isPremium}}
+        .watermark {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-45deg);
+            font-size: 48px;
+            color: rgba(255, 255, 255, 0.1);
+            font-weight: bold;
+            z-index: 1;
+            pointer-events: none;
+        }
+        {{/unless}}
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            z-index: 2;
+            position: relative;
+        }
+        
+        .header .subtitle {
+            font-size: 1.2em;
+            opacity: 0.9;
+            z-index: 2;
+            position: relative;
+        }
+        
+        .section {
+            margin-bottom: 40px;
+            page-break-inside: avoid;
+        }
+        
+        .section-title {
+            font-size: 1.8em;
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .subsection {
+            margin-bottom: 25px;
+        }
+        
+        .subsection-title {
+            font-size: 1.3em;
+            color: #555;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .info-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .info-label {
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 5px;
+        }
+        
+        .info-value {
+            color: #333;
+        }
+        
+        .list-item {
+            background: #f8f9fa;
+            margin: 8px 0;
+            padding: 12px;
+            border-radius: 6px;
+            border-left: 3px solid #667eea;
+        }
+        
+        .swot-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .swot-item {
+            padding: 20px;
+            border-radius: 10px;
+            border: 2px solid;
+        }
+        
+        .swot-strengths {
+            background: #d4edda;
+            border-color: #28a745;
+        }
+        
+        .swot-weaknesses {
+            background: #f8d7da;
+            border-color: #dc3545;
+        }
+        
+        .swot-opportunities {
+            background: #d1ecf1;
+            border-color: #17a2b8;
+        }
+        
+        .swot-threats {
+            background: #fff3cd;
+            border-color: #ffc107;
+        }
+        
+        .question-item {
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .question {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+        
+        .answer {
+            color: #333;
+            line-height: 1.7;
+            margin-bottom: 10px;
+        }
+        
+        .tips {
+            background: #e7f3ff;
+            padding: 10px;
+            border-radius: 5px;
+            border-left: 3px solid #007bff;
+            font-size: 0.9em;
+            color: #0056b3;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 50px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            color: #666;
+        }
+        
+        .page-break {
+            page-break-before: always;
+        }
+        
+        @media print {
+            body {
+                font-size: 12px;
+            }
+            .container {
+                padding: 10px;
+            }
+            .section {
+                margin-bottom: 30px;
+            }
+        }
+        
+        .no-data {
+            color: #999;
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            {{#unless isPremium}}
+            <div class="watermark">INTERVIEWACE FREE</div>
+            {{/unless}}
+            <h1>Interview Preparation Report</h1>
+            <div class="subtitle">{{title}}</div>
+            <div style="margin-top: 15px; font-size: 0.9em; opacity: 0.8;">
+                Generated on {{generatedAt}}
+            </div>
+        </div>
+
+        <!-- Step 1: Job Analysis -->
+        {{#if (hasContent step_1_data)}}
+        <div class="section">
+            <h2 class="section-title">📋 Job Analysis</h2>
+            
+            <div class="info-grid">
+                {{#if step_1_data.job_title}}
+                <div class="info-item">
+                    <div class="info-label">Job Title</div>
+                    <div class="info-value">{{step_1_data.job_title}}</div>
+                </div>
+                {{/if}}
+                
+                {{#if step_1_data.company_name}}
+                <div class="info-item">
+                    <div class="info-label">Company</div>
+                    <div class="info-value">{{step_1_data.company_name}}</div>
+                </div>
+                {{/if}}
+                
+                {{#if step_1_data.location}}
+                <div class="info-item">
+                    <div class="info-label">Location</div>
+                    <div class="info-value">{{step_1_data.location}}</div>
+                </div>
+                {{/if}}
+                
+                {{#if step_1_data.salary_range}}
+                <div class="info-item">
+                    <div class="info-label">Salary Range</div>
+                    <div class="info-value">{{step_1_data.salary_range}}</div>
+                </div>
+                {{/if}}
+            </div>
+            
+            {{#if step_1_data.company_description}}
+            <div class="subsection">
+                <h3 class="subsection-title">Company Description</h3>
+                <div class="info-item">
+                    {{step_1_data.company_description}}
+                </div>
+            </div>
+            {{/if}}
+            
+            {{#if step_1_data.key_requirements}}
+            <div class="subsection">
+                <h3 class="subsection-title">Key Requirements</h3>
+                {{#each step_1_data.key_requirements}}
+                <div class="list-item">{{this}}</div>
+                {{/each}}
+            </div>
+            {{/if}}
+            
+            {{#if step_1_data.key_responsibilities}}
+            <div class="subsection">
+                <h3 class="subsection-title">Key Responsibilities</h3>
+                {{#each step_1_data.key_responsibilities}}
+                <div class="list-item">{{this}}</div>
+                {{/each}}
+            </div>
+            {{/if}}
+        </div>
+        {{/if}}
+
+        <!-- Step 2: Business Model -->
+        {{#if (hasContent step_2_data)}}
+        <div class="section page-break">
+            <h2 class="section-title">🏢 Business Model Canvas</h2>
+            
+            <div class="info-grid">
+                {{#if step_2_data.value_propositions}}
+                <div class="info-item">
+                    <div class="info-label">Value Propositions</div>
+                    <div class="info-value">{{step_2_data.value_propositions}}</div>
+                </div>
+                {{/if}}
+                
+                {{#if step_2_data.customer_segments}}
+                <div class="info-item">
+                    <div class="info-label">Customer Segments</div>
+                    <div class="info-value">{{step_2_data.customer_segments}}</div>
+                </div>
+                {{/if}}
+                
+                {{#if step_2_data.revenue_streams}}
+                <div class="info-item">
+                    <div class="info-label">Revenue Streams</div>
+                    <div class="info-value">{{step_2_data.revenue_streams}}</div>
+                </div>
+                {{/if}}
+                
+                {{#if step_2_data.key_activities}}
+                <div class="info-item">
+                    <div class="info-label">Key Activities</div>
+                    <div class="info-value">{{step_2_data.key_activities}}</div>
+                </div>
+                {{/if}}
+            </div>
+        </div>
+        {{/if}}
+
+        <!-- Step 3: SWOT Analysis -->
+        {{#if (hasContent step_3_data)}}
+        <div class="section page-break">
+            <h2 class="section-title">⚖️ SWOT Analysis</h2>
+            
+            <div class="swot-grid">
+                <div class="swot-item swot-strengths">
+                    <h3 class="subsection-title">Strengths</h3>
+                    {{#if step_3_data.strengths}}
+                        {{#each step_3_data.strengths}}
+                        <div>• {{this}}</div>
+                        {{/each}}
+                    {{else}}
+                        <div class="no-data">No strengths identified</div>
+                    {{/if}}
+                </div>
+                
+                <div class="swot-item swot-weaknesses">
+                    <h3 class="subsection-title">Weaknesses</h3>
+                    {{#if step_3_data.weaknesses}}
+                        {{#each step_3_data.weaknesses}}
+                        <div>• {{this}}</div>
+                        {{/each}}
+                    {{else}}
+                        <div class="no-data">No weaknesses identified</div>
+                    {{/if}}
+                </div>
+                
+                <div class="swot-item swot-opportunities">
+                    <h3 class="subsection-title">Opportunities</h3>
+                    {{#if step_3_data.opportunities}}
+                        {{#each step_3_data.opportunities}}
+                        <div>• {{this}}</div>
+                        {{/each}}
+                    {{else}}
+                        <div class="no-data">No opportunities identified</div>
+                    {{/if}}
+                </div>
+                
+                <div class="swot-item swot-threats">
+                    <h3 class="subsection-title">Threats</h3>
+                    {{#if step_3_data.threats}}
+                        {{#each step_3_data.threats}}
+                        <div>• {{this}}</div>
+                        {{/each}}
+                    {{else}}
+                        <div class="no-data">No threats identified</div>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+        {{/if}}
+
+        <!-- Step 4: Profile & Experience -->
+        {{#if (hasContent step_4_data)}}
+        <div class="section page-break">
+            <h2 class="section-title">👤 Profile & Experience Matching</h2>
+            
+            {{#if step_4_data.personal_mission}}
+            <div class="subsection">
+                <h3 class="subsection-title">Personal Mission</h3>
+                <div class="info-item">{{step_4_data.personal_mission}}</div>
+            </div>
+            {{/if}}
+            
+            {{#if step_4_data.key_skills}}
+            <div class="subsection">
+                <h3 class="subsection-title">Key Skills</h3>
+                {{#each step_4_data.key_skills}}
+                <div class="list-item">{{this}}</div>
+                {{/each}}
+            </div>
+            {{/if}}
+            
+            {{#if step_4_data.achievements}}
+            <div class="subsection">
+                <h3 class="subsection-title">Key Achievements</h3>
+                {{#each step_4_data.achievements}}
+                <div class="list-item">{{this}}</div>
+                {{/each}}
+            </div>
+            {{/if}}
+        </div>
+        {{/if}}
+
+        <!-- Step 5: Why Questions -->
+        {{#if (hasContent step_5_data)}}
+        <div class="section page-break">
+            <h2 class="section-title">❓ The "Why" Questions</h2>
+            
+            {{#if step_5_data.why_you}}
+            <div class="question-item">
+                <div class="question">Why You?</div>
+                <div class="answer">{{step_5_data.why_you}}</div>
+            </div>
+            {{/if}}
+            
+            {{#if step_5_data.why_them}}
+            <div class="question-item">
+                <div class="question">Why Them?</div>
+                <div class="answer">{{step_5_data.why_them}}</div>
+            </div>
+            {{/if}}
+            
+            {{#if step_5_data.why_now}}
+            <div class="question-item">
+                <div class="question">Why Now?</div>
+                <div class="answer">{{step_5_data.why_now}}</div>
+            </div>
+            {{/if}}
+            
+            {{#if step_5_data.elevator_pitch}}
+            <div class="question-item">
+                <div class="question">30-Second Elevator Pitch</div>
+                <div class="answer">{{step_5_data.elevator_pitch}}</div>
+            </div>
+            {{/if}}
+        </div>
+        {{/if}}
+
+        <!-- Step 6: Interview Questions -->
+        {{#if (hasContent step_6_data)}}
+        <div class="section page-break">
+            <h2 class="section-title">💬 Interview Questions & Answers</h2>
+            
+            {{#if step_6_data.questions}}
+            {{#each step_6_data.questions}}
+            <div class="question-item">
+                <div class="question">{{this.question}}</div>
+                {{#if this.answer}}
+                <div class="answer">{{this.answer}}</div>
+                {{/if}}
+                {{#if this.tips}}
+                <div class="tips">💡 Tips: {{this.tips}}</div>
+                {{/if}}
+            </div>
+            {{/each}}
+            {{/if}}
+            
+            {{#if step_6_data.questions_to_ask}}
+            <div class="subsection">
+                <h3 class="subsection-title">Questions to Ask Them</h3>
+                {{#each step_6_data.questions_to_ask}}
+                <div class="list-item">{{this}}</div>
+                {{/each}}
+            </div>
+            {{/if}}
+        </div>
+        {{/if}}
+
+        <!-- Footer -->
+        <div class="footer">
+            <div>Generated by InterviewAce {{#unless isPremium}}(Free Version){{/unless}}</div>
+            <div>{{generatedAt}}</div>
+            {{#unless isPremium}}
+            <div style="margin-top: 10px; font-size: 0.9em;">
+                <a href="{{@root.FRONTEND_URL}}/premium" style="color: #667eea;">Upgrade to Premium</a> for unlimited preparations and clean reports
+            </div>
+            {{/unless}}
+        </div>
+    </div>
+</body>
+</html>
