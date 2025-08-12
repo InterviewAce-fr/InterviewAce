@@ -21,6 +21,27 @@ import scrapeRoutes from './routes/scrape';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// allowlist dynamique
+const allowlist = [
+  process.env.FRONTEND_URL,     // ex: https://startling-salamander-f45eec.netlify.app
+  'http://localhost:5173',
+  /\.netlify\.app$/             // autorise aussi les deploy previews
+];
+
+app.use(cors({
+  origin(origin, cb) {
+    if (!origin) return cb(null, true); // curl/Postman/SSR
+    const ok = allowlist.some(o => o instanceof RegExp ? o.test(origin) : o === origin);
+    cb(ok ? null : new Error('Not allowed by CORS'), ok);
+  },
+  methods: ['GET','POST','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
+  credentials: true,
+}));
+
+// très important: répondre aux preflights sur toutes les routes
+app.options('*', cors());
+
 // Security middleware
 app.use(helmet({
   contentSecurityPolicy: {
@@ -31,12 +52,6 @@ app.use(helmet({
       imgSrc: ["'self'", "data:", "https:"],
     },
   },
-}));
-
-// CORS configuration
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true,
 }));
 
 // Rate limiting
