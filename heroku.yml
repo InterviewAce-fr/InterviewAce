@@ -1,0 +1,15 @@
+build:
+  languages:
+    - nodejs
+  packages:
+    - puppeteer-heroku-buildpack
+setup:
+  addons:
+    - plan: heroku-redis:mini
+  config:
+    NODE_ENV: production
+    NPM_CONFIG_PRODUCTION: true
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: true
+run:
+  web: npm start
+  worker: npm run worker

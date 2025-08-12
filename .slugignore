@@ -1,0 +1,20 @@
+# Heroku slugignore - exclude files from deployment
+*.md
+docs/
+test/
+tests/
+*.test.js
+*.test.ts
+coverage/
+.nyc_output/
+.git/
+.gitignore
+README.md
+.env.example
+*.log
+logs/
+.DS_Store
+Thumbs.db
+# Keep src/ and tsconfig.json for build, they'll be cleaned up after
+# src/ - REMOVED from slugignore so it's available for build
+# tsconfig.json - REMOVED from slugignore so it's available for build
