@@ -137,13 +137,14 @@ export default function ProfilePage() {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
   
-      const payload = await res.json().catch(async () => {
-        const text = await res.text();
-        throw new Error(text || 'Delete failed');
-      });
-  
+      // Lire le corps UNE seule fois
+      const bodyText = await res.text();
+      let payload: any = null;
+      try { payload = JSON.parse(bodyText); } catch {}
+      
       if (!res.ok) {
-        throw new Error(payload?.error || payload?.message || 'Delete failed');
+        const msg = payload?.message || payload?.error || bodyText || 'Upload failed';
+        throw new Error(msg);
       }
   
       await refreshProfile();
