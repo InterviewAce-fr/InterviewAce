@@ -67,59 +67,44 @@ export default function ProfilePage() {
     const file = event.target.files?.[0];
     if (!file) return;
   
-    // Validate file type
-    const allowedTypes = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'text/plain'
-    ];
-    if (!allowedTypes.includes(file.type)) {
-      toast.error('Please upload a PDF, DOC, DOCX, or TXT file');
+    // mêmes validations qu'avant
+    if (file.type !== 'application/pdf') {
+      toast.error('Please upload a PDF file');
       return;
     }
-  
-    // Validate file size (10MB limit)
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('File size must be less than 10MB');
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File size must be less than 5MB');
       return;
     }
   
     setUploading(true);
-  
     try {
-      // Auth
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not authenticated');
+      // ➜ utilise l’URL absolue pour bypass Netlify
+      const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
   
-      // FormData
-      const fd = new FormData();
-      fd.append('cv', file);
+      const formData = new FormData();
+      formData.append('cv', file);
   
-      // Appel backend (grâce au proxy Vite, chemin relatif)
-      const res = await fetch('/api/upload/cv', {
+      // Token Supabase pour authenticateToken côté backend
+      const session = (await supabase.auth.getSession()).data.session;
+      const token = session?.access_token || '';
+  
+      const res = await fetch(`${API_BASE}/upload/cv`, {
         method: 'POST',
-        body: fd,
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        // ⚠️ ne pas définir Content-Type, FormData s’en charge
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
       });
   
-      // Lire le corps UNE seule fois
-      const bodyText = await res.text();
-      let payload: any = null;
-      try { payload = JSON.parse(bodyText); } catch {}
-      
       if (!res.ok) {
-        const msg = payload?.message || payload?.error || bodyText || 'Upload failed';
-        throw new Error(msg);
+        const txt = await res.text();
+        throw new Error(`Upload failed: ${res.status} ${txt}`);
       }
   
       await refreshProfile();
-      if (fileInputRef.current) fileInputRef.current.value = ''; // reset input
       toast.success('CV uploaded successfully!');
-    } catch (error) {
-      console.error('Error uploading CV:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to upload CV');
+    } catch (e) {
+      console.error('Error uploading CV:', e);
+      toast.error('Failed to upload CV');
     } finally {
       setUploading(false);
     }
