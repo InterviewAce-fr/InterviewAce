@@ -2,7 +2,7 @@
 import 'dotenv/config';
 
 import express from 'express';
-import cors from 'cors';
+import cors, { CorsOptions } from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
@@ -21,26 +21,28 @@ import scrapeRoutes from './routes/scrape';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// allowlist dynamique
+// allowlist
 const allowlist = [
-  process.env.FRONTEND_URL,     // ex: https://startling-salamander-f45eec.netlify.app
+  process.env.FRONTEND_URL,      // ex: https://startling-salamander-f45eec.netlify.app
   'http://localhost:5173',
-  /\.netlify\.app$/             // autorise aussi les deploy previews
+  /\.netlify\.app$/,             // deploy previews Netlify
 ];
 
-app.use(cors({
+const corsOptions: CorsOptions = {
   origin(origin, cb) {
     if (!origin) return cb(null, true); // curl/Postman/SSR
     const ok = allowlist.some(o => o instanceof RegExp ? o.test(origin) : o === origin);
     cb(ok ? null : new Error('Not allowed by CORS'), ok);
   },
-  methods: ['GET','POST','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization'],
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
-}));
+  optionsSuccessStatus: 204,
+};
 
-// très important: répondre aux preflights sur toutes les routes
-app.options('*', cors());
+app.use(cors(corsOptions));
+// IMPORTANT: même options pour le preflight
+app.options('*', cors(corsOptions));
 
 // Security middleware
 app.use(helmet({
