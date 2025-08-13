@@ -112,13 +112,12 @@ router.post(
         .insert({
           user_id: userId,
           storage_path: filePath,
-          url: publicUrl,
-          status: 'processing',
-          error_message: null,
-          extracted_json: {}, // ⚠️ pas null
           original_filename: originalname,
-          mimetype,
-          size_bytes: size
+          mime_type: mimetype,   // ✅ correspond au schéma
+          size_bytes: size,      // ✅ colonne existante
+          status: 'extracting',  // ✅ valeur autorisée
+          error_message: null,
+          extracted_json: null
         })
         .select('id')
         .single();
@@ -134,7 +133,7 @@ router.post(
       if (!text || text.length < 20) {
         await supabase
           .from('resumes')
-          .update({ status: 'error', error_message: 'Text extraction failed or unsupported file type' })
+          .update({ status: 'failed', error_message: 'Text extraction failed or unsupported file type' })
           .eq('id', resumeId);
 
         return res.status(422).json({ error: 'Text extraction failed or unsupported file type' });
@@ -146,7 +145,7 @@ router.post(
       // 7) Mettre à jour le statut du resume
       const { error: doneErr } = await supabase
         .from('resumes')
-        .update({ status: 'done', error_message: null })
+        .update({ status: 'ready', error_message: null })
         .eq('id', resumeId);
 
       if (doneErr) {
