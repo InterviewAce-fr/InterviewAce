@@ -80,7 +80,7 @@ export default function ProfilePage() {
     setUploading(true);
     try {
       // ➜ utilise l’URL absolue pour bypass Netlify
-      const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+      const API_BASE = '/api';
   
       const formData = new FormData();
       formData.append('cv', file);
