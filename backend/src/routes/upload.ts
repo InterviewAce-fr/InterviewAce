@@ -29,7 +29,8 @@ async function extractTextFromBuffer(mimetype: string, buf: Buffer): Promise<str
     }
 
     return '';
-  } catch {
+  } catch (e) {
+    logger.error('Text extraction error:', e);
     return '';
   }
 }
@@ -55,7 +56,8 @@ const upload = multer({
 });
 
 // Upload CV
-router.post('/cv', 
+router.post(
+  '/cv',
   authenticateToken,
   upload.single('cv'),
   async (req: AuthRequest, res) => {
@@ -65,98 +67,106 @@ router.post('/cv',
       }
 
       const userId = req.user!.id;
-      const fileExt = req.file.originalname.split('.').pop();
-      const fileName = `${userId}-${uuidv4()}.${fileExt}`;
-      const filePath = `cvs/${fileName}`;
+      const { mimetype, buffer, originalname, size } = req.file;
 
-      // Upload to Supabase Storage
+      const fileExt = originalname.includes('.') ? originalname.split('.').pop() : 'bin';
+      const fileName = `${uuidv4()}.${fileExt}`;
+      // chemin “par utilisateur” (plus propre pour les policies)
+      const filePath = `cvs/${userId}/${fileName}`;
+
+      // 1) Upload Storage
       const { error: uploadError } = await supabase.storage
-          .from('resumes')
-          .upload(filePath, req.file.buffer, {
-            contentType: req.file.mimetype,
-            upsert: true
-          });
-        
-        if (uploadError) {
-          logger.error('File upload error:', uploadError);
-          throw uploadError;
-        }
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
         .from('resumes')
-        .getPublicUrl(filePath);
+        .upload(filePath, buffer, {
+          contentType: mimetype
+        });
 
-      // Update user profile with CV URL
-      const { error: updateError } = await supabase
-        .from('user_profiles')
-        .update({ cv_url: publicUrl })
-        .eq('id', userId);
-
-      if (updateError) {
-        logger.error('Profile update error:', updateError);
-        throw updateError;
+      if (uploadError) {
+        logger.error('File upload error:', uploadError);
+        return res.status(500).json({ error: 'Failed to upload to storage' });
       }
 
-const { mimetype, buffer, originalname, size } = req.file;
+      // 2) Public URL
+      const {
+        data: { publicUrl }
+      } = supabase.storage.from('resumes').getPublicUrl(filePath);
 
-setImmediate(async () => {
-  let resumeId: string | null = null;
-  try {
-    const { data: row, error: insertErr } = await supabase
-      .from('resumes')
-      .insert({
-        user_id: userId,
-        storage_path: filePath,
-        url: publicUrl,
-        status: 'processing',
-        error_message: null,
-        extracted_json: null,
-        original_filename: originalname,   // ⬅️ utilise les variables capturées
-        mimetype,                          // ⬅️
-        size_bytes: size                   // ⬅️
-      })
-      .select('id')
-      .single();
+      // 3) Update user_profiles (forçons RETURNING pour savoir si une ligne a été touchée)
+      const { data: updatedProfiles, error: updateProfileErr } = await supabase
+        .from('user_profiles')
+        .update({ cv_url: publicUrl })
+        .eq('id', userId)
+        .select('id');
 
-    if (insertErr || !row?.id) throw insertErr || new Error('insert resumes failed');
-    resumeId = row.id;
+      if (updateProfileErr) {
+        logger.error('Profile update error:', updateProfileErr);
+        return res.status(500).json({ error: 'Failed to update user profile' });
+      }
+      if (!updatedProfiles?.length) {
+        logger.warn(`No user_profiles row updated for user ${userId}`);
+      }
 
-    const text = await extractTextFromBuffer(mimetype, buffer); // ⬅️
-    if (!text || text.length < 20) {
-      await supabase.from('resumes')
-        .update({ status: 'error', error_message: 'Text extraction failed or unsupported file type' })
+      // 4) Créer la ligne "resumes" (extracted_json: {} pour éviter NOT NULL)
+      const { data: resumeRow, error: resumeInsertErr } = await supabase
+        .from('resumes')
+        .insert({
+          user_id: userId,
+          storage_path: filePath,
+          url: publicUrl,
+          status: 'processing',
+          error_message: null,
+          extracted_json: {}, // ⚠️ pas null
+          original_filename: originalname,
+          mimetype,
+          size_bytes: size
+        })
+        .select('id')
+        .single();
+
+      if (resumeInsertErr || !resumeRow?.id) {
+        logger.error('Insert resumes error:', resumeInsertErr);
+        return res.status(500).json({ error: 'Failed to create resume record' });
+      }
+      const resumeId = resumeRow.id;
+
+      // 5) Extraction de texte
+      const text = await extractTextFromBuffer(mimetype, buffer);
+      if (!text || text.length < 20) {
+        await supabase
+          .from('resumes')
+          .update({ status: 'error', error_message: 'Text extraction failed or unsupported file type' })
+          .eq('id', resumeId);
+
+        return res.status(422).json({ error: 'Text extraction failed or unsupported file type' });
+      }
+
+      // 6) Analyse IA (nécessite OPENAI_API_KEY en config)
+      const extracted = await analyzeCVFromText(text);
+
+      // 7) Mettre à jour le statut du resume
+      const { error: doneErr } = await supabase
+        .from('resumes')
+        .update({ status: 'done', error_message: null })
         .eq('id', resumeId);
-      return;
-    }
 
-    const extracted = await analyzeCVFromText(text);
-    // on marque uniquement le statut (pas d'extracted_json en DB "resumes")
-    await supabase.from('resumes')
-      .update({ status: 'done', error_message: null })
-      .eq('id', resumeId);
+      if (doneErr) {
+        logger.error('Update resume status error:', doneErr);
+      }
 
-    // (facultatif) s'assurer qu'un enregistrement existe dans public.users
-    const { data: publicUserId, error: euErr } = await supabase.rpc('ensure_user');
-    if (euErr || !publicUserId) {
-      // si tu es sûr que req.user!.id == users.id, tu peux utiliser userId directement
-      // sinon, loggue et continue avec userId par défaut
-      // throw new Error(`ensure_user failed: ${euErr?.message}`);
-    }
-    
-    // (facultatif) désactiver les anciens profils actifs de cet utilisateur
-    await supabase
-      .from('resume_profiles')
-      .update({ is_active: false })
-      .eq('user_id', publicUserId || userId);
-    
-    // insérer le nouveau profil
-    await supabase
-      .from('resume_profiles')
-      .insert({
+      // 8) Désactiver anciens profils + insérer le nouveau
+      const { error: deactivateErr } = await supabase
+        .from('resume_profiles')
+        .update({ is_active: false })
+        .eq('user_id', userId);
+
+      if (deactivateErr) {
+        logger.error('Deactivate old profiles error:', deactivateErr);
+      }
+
+      const { error: insertProfileErr } = await supabase.from('resume_profiles').insert({
         resume_id: resumeId,
-        user_id: publicUserId || userId,
-        language: 'en', // ou détecte/stocke 'fr' si tu veux
+        user_id: userId,
+        language: 'en', // ajuster si besoin
         person: extracted.person ?? {},
         education: extracted.education ?? [],
         experience: extracted.experience ?? [],
@@ -170,32 +180,29 @@ setImmediate(async () => {
         is_active: true
       });
 
-  } catch (e: any) {
-    if (resumeId) {
-      await supabase.from('resumes')
-        .update({ status: 'error', error_message: e?.message || 'Unknown error' })
-        .eq('id', resumeId);
+      if (insertProfileErr) {
+        logger.error('Insert resume_profiles error:', insertProfileErr);
+        // on ne renvoie pas 500 si l’analyse a marché et que le resume est créé,
+        // mais on loggue pour pouvoir corriger.
+      }
+
+      // ✅ Réponse finale (même forme qu’avant pour le front)
+      return res.json({
+        message: 'CV uploaded successfully',
+        url: publicUrl,
+        filename: originalname,
+        size
+      });
+    } catch (error) {
+      logger.error('CV upload error:', error);
+      return res.status(500).json({
+        error: 'Failed to upload CV',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   }
-});
+);
 
-// ✅ répondre au client comme avant
-res.json({
-  message: 'CV uploaded successfully',
-  url: publicUrl,
-  filename: req.file.originalname,
-  size: req.file.size
-});
-
-} catch (error) {
-  logger.error('CV upload error:', error);
-  res.status(500).json({
-    error: 'Failed to upload CV',
-    message: error instanceof Error ? error.message : 'Unknown error'
-  });
-}
-});
-      
 // Delete CV
 router.delete('/cv', authenticateToken, async (req: AuthRequest, res) => {
   try {
@@ -217,10 +224,7 @@ router.delete('/cv', authenticateToken, async (req: AuthRequest, res) => {
     const filePath = url.pathname.split('/').slice(-2).join('/');
 
     // Delete from storage
-    const { error: deleteError } = await supabase.storage
-      .from('resumes')
-      .remove([filePath]);
-
+    const { error: deleteError } = await supabase.storage.from('resumes').remove([filePath]);
     if (deleteError) {
       logger.error('File deletion error:', deleteError);
     }
@@ -237,10 +241,8 @@ router.delete('/cv', authenticateToken, async (req: AuthRequest, res) => {
     }
 
     res.json({ message: 'CV deleted successfully' });
-
   } catch (error) {
     logger.error('CV deletion error:', error);
-     console.log('Supabase deletion error details:', error);
     res.status(500).json({ error: 'Failed to delete CV' });
   }
 });
