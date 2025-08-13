@@ -5,11 +5,12 @@
   "main": "dist/server.js",
   "type": "module",
   "scripts": {
+    "build": "tsc",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
     "worker": "node dist/worker.js",
-    "test": "jest"
+    "test": "jest",
+    "heroku-postbuild": "npm ci --include=dev && npm run build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.38.5",
@@ -48,6 +49,6 @@
     "typescript": "^5.3.3"
   },
   "engines": {
-    "node": "22.x"
+    "node": ">=18"
   }
 }
