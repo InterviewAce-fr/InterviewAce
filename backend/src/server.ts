@@ -22,6 +22,8 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // 🔧 CORS BRUTE-FORCE (au tout début, avant helmet)
+res.header('X-CORS-MW', 'hit');
+
 app.use((req, res, next) => {
   const origin = req.headers.origin as string | undefined;
 
