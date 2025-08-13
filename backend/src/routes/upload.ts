@@ -142,14 +142,18 @@ router.post(
       // 6) Analyse IA (nécessite OPENAI_API_KEY en config)
       const extracted = await analyzeCVFromText(text);
 
-      // 7) Mettre à jour le statut du resume
-      const { error: doneErr } = await supabase
+      // 7) Mettre à jour le statut + stocker l’extraction
+      const { error: readyErr } = await supabase
         .from('resumes')
-        .update({ status: 'ready', error_message: null })
+        .update({
+          status: 'ready',
+          error_message: null,
+          extracted_json: extracted
+        })
         .eq('id', resumeId);
 
-      if (doneErr) {
-        logger.error('Update resume status error:', doneErr);
+      if (readyErr) {
+        logger.error('Update resume status error:', readyErr);
       }
 
       // 8) Désactiver anciens profils + insérer le nouveau
