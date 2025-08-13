@@ -21,17 +21,35 @@ import scrapeRoutes from './routes/scrape';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// ⚠️ TEMP: autorise tout pour valider que le préflight passe bien par Express
-const corsOpen = cors({
-  origin: true,                 // reflète l'Origin reçu
-  credentials: true,
-  methods: ['GET','POST','DELETE','OPTIONS'],
-  // ne PAS fixer allowedHeaders → le middleware reflète automatiquement
-  optionsSuccessStatus: 204,
-});
+// 🔧 CORS BRUTE-FORCE (au tout début, avant helmet)
+app.use((req, res, next) => {
+  const origin = req.headers.origin as string | undefined;
 
-app.use(corsOpen);
-app.options('*', corsOpen);
+  // autorise ton site Netlify canonique + previews + localhost
+  const allowed =
+    !!origin &&
+    (
+      origin === process.env.FRONTEND_URL ||
+      /^https?:\/\/.*\.netlify\.app$/.test(origin) ||
+      origin === 'http://localhost:5173'
+    );
+
+  if (allowed) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Vary', 'Origin'); // pour éviter le cache foireux
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+
+    // reflète exactement ce que demande le navigateur (préflight)
+    const reqHeaders = (req.headers['access-control-request-headers'] as string) || 'Authorization,Content-Type';
+    res.header('Access-Control-Allow-Headers', reqHeaders);
+  }
+
+  // Répond immédiatement aux préflights
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+
+  next();
+});
 
 // Security middleware
 app.use(helmet({
