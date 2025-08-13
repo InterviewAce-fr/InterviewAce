@@ -21,28 +21,17 @@ import scrapeRoutes from './routes/scrape';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// allowlist
-const allowlist = [
-  process.env.FRONTEND_URL,      // ex: https://startling-salamander-f45eec.netlify.app
-  'http://localhost:5173',
-  /\.netlify\.app$/,             // deploy previews Netlify
-];
-
-const corsOptions: CorsOptions = {
-  origin(origin, cb) {
-    if (!origin) return cb(null, true); // curl/Postman/SSR
-    const ok = allowlist.some(o => o instanceof RegExp ? o.test(origin) : o === origin);
-    cb(ok ? null : new Error('Not allowed by CORS'), ok);
-  },
-  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+// ⚠️ TEMP: autorise tout pour valider que le préflight passe bien par Express
+const corsOpen = cors({
+  origin: true,                 // reflète l'Origin reçu
   credentials: true,
+  methods: ['GET','POST','DELETE','OPTIONS'],
+  // ne PAS fixer allowedHeaders → le middleware reflète automatiquement
   optionsSuccessStatus: 204,
-};
+});
 
-app.use(cors(corsOptions));
-// IMPORTANT: même options pour le preflight
-app.options('*', cors(corsOptions));
+app.use(corsOpen);
+app.options('*', corsOpen);
 
 // Security middleware
 app.use(helmet({
