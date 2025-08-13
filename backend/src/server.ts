@@ -22,8 +22,6 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // 🔧 CORS BRUTE-FORCE (au tout début, avant helmet)
-res.header('X-CORS-MW', 'hit');
-
 app.use((req, res, next) => {
   const origin = req.headers.origin as string | undefined;
 
@@ -45,6 +43,9 @@ app.use((req, res, next) => {
     // reflète exactement ce que demande le navigateur (préflight)
     const reqHeaders = (req.headers['access-control-request-headers'] as string) || 'Authorization,Content-Type';
     res.header('Access-Control-Allow-Headers', reqHeaders);
+
+    // header de debug pour vérifier qu’on passe bien ici
+    res.header('X-CORS-MW', 'hit');
   }
 
   // Répond immédiatement aux préflights
