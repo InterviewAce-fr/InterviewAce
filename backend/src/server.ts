@@ -21,34 +21,37 @@ import scrapeRoutes from './routes/scrape';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// 🔧 CORS BRUTE-FORCE (au tout début, avant helmet)
+// 🔧 CORS / Preflight — DOIT être le tout 1er middleware
 app.use((req, res, next) => {
   const origin = req.headers.origin as string | undefined;
 
-  // autorise ton site Netlify canonique + previews + localhost
+  // autorise ton site Netlify + localhost
   const allowed =
     !!origin &&
     (
       origin === process.env.FRONTEND_URL ||
+      origin === 'https://startling-salamander-f45eec.netlify.app' ||
       /^https?:\/\/.*\.netlify\.app$/.test(origin) ||
       origin === 'http://localhost:5173'
     );
 
   if (allowed) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Vary', 'Origin'); // pour éviter le cache foireux
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
 
-    // reflète exactement ce que demande le navigateur (préflight)
-    const reqHeaders = (req.headers['access-control-request-headers'] as string) || 'Authorization,Content-Type';
-    res.header('Access-Control-Allow-Headers', reqHeaders);
+    // reflète exactement les headers demandés par le navigateur
+    const reqHeaders =
+      (req.headers['access-control-request-headers'] as string) ||
+      'authorization,content-type';
+    res.setHeader('Access-Control-Allow-Headers', reqHeaders);
 
-    // header de debug pour vérifier qu’on passe bien ici
-    res.header('X-CORS-MW', 'hit');
+    // debug: permet de vérifier que ce middleware est bien touché
+    res.setHeader('X-CORS-MW', 'hit');
   }
 
-  // Répond immédiatement aux préflights
+  // répondre immédiatement aux préflights
   if (req.method === 'OPTIONS') return res.sendStatus(204);
 
   next();
