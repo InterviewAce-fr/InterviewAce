@@ -2,104 +2,69 @@ import React, { useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { toast } from '../components/ui/Toast';
-import { 
-  User, 
-  Upload, 
-  FileText, 
-  Loader2, 
+import {
+  User,
+  Upload,
+  FileText,
+  Loader2,
   Trash2,
-  Settings
+  Settings,
 } from 'lucide-react';
 
-// Single source of truth for storage bucket
-const STORAGE_BUCKET = 'resumes';
-
-// Log environment variables once at module load
+// ——— Logs env (utile en prod) ———
 console.log('=== SUPABASE CONFIG CHECK ===');
 console.log('VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL);
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-if (anonKey) {
-  console.log('VITE_SUPABASE_ANON_KEY:', `${anonKey.slice(0, 8)}...${anonKey.slice(-8)}`);
-} else {
-  console.log('VITE_SUPABASE_ANON_KEY: NOT SET');
-}
+console.log(
+  'VITE_SUPABASE_ANON_KEY:',
+  anonKey ? `${anonKey.slice(0, 8)}...${anonKey.slice(-8)}` : 'NOT SET'
+);
 console.log('================================');
+
+const ALLOWED_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+];
 
 export default function ProfilePage() {
   const { user, profile, refreshProfile } = useAuth();
   const [uploading, setUploading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const assertBucketExistsOrThrow = async () => {
-    if (diagnosticsRun) return;
-    
-    console.log('=== BUCKET EXISTENCE CHECK ===');
-    
-    try {
-      // Client-safe bucket check - try to list root of bucket
-      const { data, error } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .list('', { limit: 1 });
-      
-      if (error) {
-        console.error('Bucket check error:', error);
-        
-        // Only throw on 404 - bucket doesn't exist
-        if (error.message?.includes('404') || error.statusCode === '404') {
-          throw new Error(`Project/bucket mismatch. Verify the project URL matches the dashboard project where '${STORAGE_BUCKET}' exists and restart dev server.`);
-        }
-        
-        // For other errors, log but don't block upload attempt
-        console.warn('Bucket check failed but continuing:', error.message);
-      }
-      
-      console.log(`✓ Bucket '${STORAGE_BUCKET}' accessible`);
-      
-      setDiagnosticsRun(true);
-      
-    } catch (error) {
-      console.error('Bucket check failed:', error);
-      throw error;
-    }
-  };
 
   const handleCVUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-  
-    // mêmes validations qu'avant
-    if (file.type !== 'application/pdf') {
-      toast.error('Please upload a PDF file');
-      return;
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return toast.error('Please upload a PDF, DOC, DOCX, or TXT file');
     }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('File size must be less than 5MB');
-      return;
+    if (file.size > 10 * 1024 * 1024) {
+      return toast.error('File size must be less than 10MB');
     }
-  
+
     setUploading(true);
     try {
-      // ➜ utilise l’URL absolue pour bypass Netlify
-      const API_BASE = '/api';
-  
+      const API_BASE = import.meta.env.VITE_API_BASE_URL; // doit inclure /api
+      if (!API_BASE) throw new Error('VITE_API_BASE_URL manquante');
+
+      const session = (await supabase.auth.getSession()).data.session;
+      const token = session?.access_token;
+      if (!token) throw new Error('Not authenticated');
+
       const formData = new FormData();
       formData.append('cv', file);
-  
-      // Token Supabase pour authenticateToken côté backend
-      const session = (await supabase.auth.getSession()).data.session;
-      const token = session?.access_token || '';
-  
+
       const res = await fetch(`${API_BASE}/upload/cv`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
-        body: formData
+        body: formData,
       });
-  
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`Upload failed: ${res.status} ${txt}`);
-      }
-  
+
+      if (!res.ok) throw new Error(`Upload failed: ${res.status} ${await res.text()}`);
+
       await refreshProfile();
       toast.success('CV uploaded successfully!');
     } catch (e) {
@@ -113,16 +78,20 @@ export default function ProfilePage() {
   const handleDeleteCV = async () => {
     setLoading(true);
     try {
-      const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+      const API_BASE = import.meta.env.VITE_API_BASE_URL; // idem, pas de fallback
+      if (!API_BASE) throw new Error('VITE_API_BASE_URL manquante');
+
       const session = (await supabase.auth.getSession()).data.session;
-      const token = session?.access_token || '';
-  
+      const token = session?.access_token;
+      if (!token) throw new Error('Not authenticated');
+
       const res = await fetch(`${API_BASE}/upload/cv`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
-  
-      if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+
+      if (!res.ok) throw new Error(`Delete failed: ${res.status} ${await res.text()}`);
+
       await refreshProfile();
       toast.success('CV deleted successfully');
     } catch (e) {
@@ -133,7 +102,7 @@ export default function ProfilePage() {
     }
   };
 
-  const hasCV = profile?.cv_url;
+  const hasCV = !!profile?.cv_url;
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -175,24 +144,26 @@ export default function ProfilePage() {
                     Email cannot be changed. Contact support if needed.
                   </p>
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Account Status
                   </label>
-                  <div className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-medium ${
-                    profile?.is_premium 
-                      ? 'bg-yellow-100 text-yellow-800' 
-                      : 'bg-gray-100 text-gray-800'
-                  }`}>
+                  <div
+                    className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-medium ${
+                      profile?.is_premium
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}
+                  >
                     {profile?.is_premium ? (
                       <>
-                        <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+                        <div className="w-2 h-2 bg-yellow-400 rounded-full" />
                         <span>Premium</span>
                       </>
                     ) : (
                       <>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                        <div className="w-2 h-2 bg-gray-400 rounded-full" />
                         <span>Free</span>
                       </>
                     )}
@@ -210,7 +181,7 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* CV Management - Updated */}
+            {/* CV Management */}
             <div className="bg-white rounded-lg shadow">
               <div className="p-6 border-b">
                 <h2 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
@@ -223,29 +194,29 @@ export default function ProfilePage() {
                   <div className="border-2 border-dashed border-green-300 rounded-lg p-6 bg-green-50">
                     <div className="text-center">
                       <FileText className="h-12 w-12 text-green-600 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-green-900 mb-2">
-                        CV Uploaded
-                      </h3>
+                      <h3 className="text-lg font-medium text-green-900 mb-2">CV Uploaded</h3>
                       <p className="text-green-700 mb-6">
                         Your CV has been uploaded and is ready for use in interview preparations.
                       </p>
-                      
-                      <div className="space-x-4">
+
+                      <div className="flex flex-col sm:flex-row gap-3 justify-center">
                         <a
-                          href={profile.cv_url}
+                          href={profile?.cv_url || '#'}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium transition-colors"
+                          className="inline-flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium transition-colors"
                         >
                           <FileText className="h-4 w-4" />
                           <span>View CV</span>
                         </a>
+
                         <button
                           onClick={handleDeleteCV}
-                          className="inline-flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-medium transition-colors"
+                          disabled={loading}
+                          className="inline-flex items-center justify-center space-x-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-medium transition-colors disabled:opacity-50"
                         >
-                          <Trash2 className="h-4 w-4" />
-                          <span>Delete CV</span>
+                          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          <span>{loading ? 'Deleting...' : 'Delete CV'}</span>
                         </button>
                       </div>
                     </div>
@@ -254,13 +225,11 @@ export default function ProfilePage() {
                   <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 transition-colors">
                     <div className="text-center">
                       <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        Upload Your CV
-                      </h3>
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">Upload Your CV</h3>
                       <p className="text-gray-600 mb-6">
                         Upload your CV to get personalized AI assistance during interview preparation
                       </p>
-                      
+
                       <div className="space-y-4">
                         <button
                           onClick={() => fileInputRef.current?.click()}
@@ -274,10 +243,8 @@ export default function ProfilePage() {
                           )}
                           <span>{uploading ? 'Uploading...' : 'Choose File'}</span>
                         </button>
-                        
-                        <p className="text-xs text-gray-500">
-                          PDF, DOC, DOCX, or TXT files only, max 10MB
-                        </p>
+
+                        <p className="text-xs text-gray-500">PDF, DOC, DOCX, or TXT files only, max 10MB</p>
                       </div>
                     </div>
                   </div>
@@ -302,26 +269,17 @@ export default function ProfilePage() {
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Account Type</span>
-                  <span className="font-medium">
-                    {profile?.is_premium ? 'Premium' : 'Free'}
-                  </span>
+                  <span className="font-medium">{profile?.is_premium ? 'Premium' : 'Free'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">AI Booster</span>
                   <span className="font-medium">
-                    {profile?.is_premium 
-                      ? 'Unlimited' 
-                      : profile?.booster_used 
-                        ? 'Used' 
-                        : 'Available'
-                    }
+                    {profile?.is_premium ? 'Unlimited' : profile?.booster_used ? 'Used' : 'Available'}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Resumes</span>
-                  <span className="font-medium">
-                    {hasCV ? 'Uploaded' : 'None'}
-                  </span>
+                  <span className="font-medium">{hasCV ? 'Uploaded' : 'None'}</span>
                 </div>
               </div>
             </div>

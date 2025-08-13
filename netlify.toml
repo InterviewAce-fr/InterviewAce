@@ -1,9 +1,3 @@
 [build]
   command = "npm run build"
   publish = "dist"
-
-[[redirects]]
-  from = "/api/*"
-  to = "https://interviewace-backend.herokuapp.com/api/:splat"
-  status = 200
-  force = true
