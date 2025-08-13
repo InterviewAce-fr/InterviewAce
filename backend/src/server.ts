@@ -21,6 +21,8 @@ import scrapeRoutes from './routes/scrape';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+app.set('trust proxy', 1); // faire confiance au premier proxy (router Heroku)
+
 // 🔧 CORS / Preflight — DOIT être le tout 1er middleware
 app.use((req, res, next) => {
   const origin = req.headers.origin as string | undefined;
