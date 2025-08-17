@@ -17,6 +17,7 @@ import pdfRoutes from './routes/pdf';
 import uploadRoutes from './routes/upload';
 import stripeRoutes from './routes/stripe';
 import scrapeRoutes from './routes/scrape';
+import aiRoutes from './routes/job';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -101,6 +102,7 @@ app.use('/api/pdf', pdfRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/scrape', scrapeRoutes);
+app.use('/api/ai', aiRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
