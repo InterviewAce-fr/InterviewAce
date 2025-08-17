@@ -29,7 +29,8 @@ export interface MatchAnalysisResult {
   recommendations: string[];
 }
 
-const API_URL = import.meta.env.VITE_API_BASE_URL;
+const BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, ''); // retire le / final
+const api = (p: string) => `${BASE}${p.startsWith('/') ? '' : '/'}${p}`;
 
 async function authHeaders() {
   const { data: { session } } = await supabase.auth.getSession();
@@ -51,7 +52,7 @@ class AIService {
 
   async analyzeJobFromText(jobText: string): Promise<JobAnalysisResult> {
     const headers = await authHeaders();
-    const r = await fetch(`${API_URL}/api/ai/analyze-text`, {
+    const r = await fetch(api(`/api/ai/analyze-text`), {
       method: 'POST',
       headers,
       body: JSON.stringify({ text: jobText })
@@ -70,7 +71,7 @@ class AIService {
 
   async analyzeCVFromText(cvText: string): Promise<CVAnalysisResult> {
     const headers = await authHeaders();
-    const r = await fetch(`${API_URL}/api/ai/analyze-cv-text`, {
+    const r = await fetch(api(`/api/ai/analyze-cv-text`), {
       method: 'POST',
       headers,
       body: JSON.stringify({ text: cvText })
@@ -88,7 +89,7 @@ class AIService {
 
   async analyzeMatch(jobData: JobAnalysisResult, cvData: CVAnalysisResult): Promise<MatchAnalysisResult> {
     const headers = await authHeaders();
-    const r = await fetch(`${API_URL}/api/ai/match`, {
+    const r = await fetch(api(`/api/ai/match`), {
       method: 'POST',
       headers,
       body: JSON.stringify({ jobData, cvData })
@@ -105,7 +106,7 @@ class AIService {
 
   async generateInterviewAnswers(jobData: JobAnalysisResult, cvData: CVAnalysisResult, questions: string[]): Promise<string[]> {
     const headers = await authHeaders();
-    const r = await fetch(`${API_URL}/api/ai/generate-answers`, {
+    const r = await fetch(api(`/api/ai/generate-answers`), {
       method: 'POST',
       headers,
       body: JSON.stringify({ jobData, cvData, questions })
