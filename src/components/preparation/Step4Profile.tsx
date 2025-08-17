@@ -133,9 +133,6 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
                 <div key={idx} className="bg-white rounded-lg border border-blue-200 p-4">
                   <div className="text-gray-800 text-sm">{req}</div>
                   <div className="mt-3">
-                    <label className="block text-xs font-medium text-blue-800 mb-1">
-                      Votre éducation/expérience en lien avec ce requirement
-                    </label>
                     <textarea
                       value={(data.requirementResponses?.[idx] ?? '')}
                       onChange={(e) => updateRequirementResponse(idx, e.target.value)}
@@ -167,9 +164,6 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
                 <div key={idx} className="bg-white rounded-lg border border-blue-200 p-4">
                   <div className="text-gray-800 text-sm">{res}</div>
                   <div className="mt-3">
-                    <label className="block text-xs font-medium text-blue-800 mb-1">
-                      Votre expérience concrète pour assumer cette responsabilité
-                    </label>
                     <textarea
                       value={(data.responsibilityResponses?.[idx] ?? '')}
                       onChange={(e) => updateResponsibilityResponse(idx, e.target.value)}
