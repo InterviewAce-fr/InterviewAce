@@ -266,6 +266,12 @@ const PreparationJourney: React.FC = () => {
   const CurrentStepComponent = steps[currentStep - 1].component;
   const currentStepData = (preparation as any)[`step_${currentStep}_data`] || {};
 
+  const buildTitleFromStep1 = (step1: any) => {
+    const jt = step1?.job_title?.trim();
+    const cn = step1?.company_name?.trim();
+    return jt && cn ? `${jt} at ${cn}` : '';
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -284,7 +290,9 @@ const PreparationJourney: React.FC = () => {
                 Back to Dashboard
               </button>
             </div>
-            <h1 className="text-xl font-semibold text-gray-900">{preparation.title}</h1>
+            <h1 className="text-xl font-semibold text-gray-900">
+              {buildTitleFromStep1(preparation.step_1_data) || preparation.title || 'Untitled Preparation'}
+            </h1>
             <div className="flex items-center space-x-2">
               {saving && (
                 <div className="flex items-center text-sm text-gray-600">
