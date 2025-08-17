@@ -1,7 +1,5 @@
-import React, { useState } from 'react';
-import { Upload, Loader2, Zap, User, Award, Briefcase, TrendingUp, TrendingDown, Minus, Building, GraduationCap, Plus, X } from 'lucide-react';
-import { aiService } from '../../lib/aiService';
-import { toast } from '../ui/Toast';
+import React from 'react';
+import { Building, ClipboardList, CheckSquare, User } from 'lucide-react';
 
 interface MatchResult {
   skill: string;
@@ -21,478 +19,176 @@ interface MatchingResults {
 }
 
 interface Step4Data {
+  // Conservés pour compat éventuelle avec le reste du parcours
   candidateProfile?: string;
-  keyResponsibilities?: string[];
-  keySkills?: string[];
-  education?: string[];
-  experience?: string[];
-  cvText?: string;
+  keyResponsibilities?: string[]; // (non utilisés ici)
+  keySkills?: string[];          // (non utilisés ici)
+  education?: string[];          // (non utilisés ici)
+  experience?: string[];         // (non utilisés ici)
+  cvText?: string;               // (non utilisé ici)
   matchingResults?: MatchingResults;
+
+  // ✨ Nouveaux champs pour l’UX demandée
+  requirementResponses?: string[];     // réponse de l’utilisateur pour chaque requirement
+  responsibilityResponses?: string[];  // réponse de l’utilisateur pour chaque responsibility
 }
 
 interface Step4Props {
   data: Step4Data;
   onUpdate: (data: Step4Data) => void;
-  jobData?: any; // From Step 1
+  jobData?: {
+    keyRequirements?: string[];
+    keyResponsibilities?: string[];
+    // autres champs Step 1 inchangés
+  };
 }
 
 const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isMatching, setIsMatching] = useState(false);
+  const requirements = jobData?.keyRequirements ?? [];
+  const responsibilities = jobData?.keyResponsibilities ?? [];
 
-  const handleChange = (field: keyof Step4Data, value: string | string[]) => {
-    onUpdate({ ...data, [field]: value });
+  // Score global — on l’utilise s’il est déjà calculé ailleurs
+  const score = typeof data.matchingResults?.overallScore === 'number'
+    ? Math.round(data.matchingResults.overallScore)
+    : null;
+
+  const getScoreColor = (s: number | null) => {
+    if (s === null) return 'text-gray-600 border-gray-300';
+    if (s < 50) return 'text-red-600 border-red-300';
+    if (s < 75) return 'text-yellow-600 border-yellow-300';
+    return 'text-green-600 border-green-300';
   };
 
-  const addSkill = () => {
-    const skills = data.keySkills || [];
-    onUpdate({ ...data, keySkills: [...skills, ''] });
+  const getScoreBg = (s: number | null) => {
+    if (s === null) return 'bg-gray-50';
+    if (s < 50) return 'bg-red-50';
+    if (s < 75) return 'bg-yellow-50';
+    return 'bg-green-50';
   };
 
-  const updateSkill = (index: number, value: string) => {
-    const skills = [...(data.keySkills || [])];
-    skills[index] = value;
-    onUpdate({ ...data, keySkills: skills });
-  };
-
-  const removeSkill = (index: number) => {
-    const skills = data.keySkills || [];
-    onUpdate({ ...data, keySkills: skills.filter((_, i) => i !== index) });
-  };
-
-  const addResponsibility = () => {
-    const responsibilities = data.keyResponsibilities || [];
-    onUpdate({ ...data, keyResponsibilities: [...responsibilities, ''] });
-  };
-
-  const updateResponsibility = (index: number, value: string) => {
-    const responsibilities = [...(data.keyResponsibilities || [])];
-    responsibilities[index] = value;
-    onUpdate({ ...data, keyResponsibilities: responsibilities });
-  };
-
-  const removeResponsibility = (index: number) => {
-    const responsibilities = data.keyResponsibilities || [];
-    onUpdate({ ...data, keyResponsibilities: responsibilities.filter((_, i) => i !== index) });
-  };
-
-  const addEducation = () => {
-    const education = data.education || [];
-    onUpdate({ ...data, education: [...education, ''] });
-  };
-
-  const updateEducation = (index: number, value: string) => {
-    const education = [...(data.education || [])];
-    education[index] = value;
-    onUpdate({ ...data, education: education });
-  };
-
-  const removeEducation = (index: number) => {
-    const education = data.education || [];
-    onUpdate({ ...data, education: education.filter((_, i) => i !== index) });
-  };
-
-  const addExperience = () => {
-    const experience = data.experience || [];
-    onUpdate({ ...data, experience: [...experience, ''] });
-  };
-
-  const updateExperience = (index: number, value: string) => {
-    const experience = [...(data.experience || [])];
-    experience[index] = value;
-    onUpdate({ ...data, experience: experience });
-  };
-
-  const removeExperience = (index: number) => {
-    const experience = data.experience || [];
-    onUpdate({ ...data, experience: experience.filter((_, i) => i !== index) });
-  };
-
-  const analyzeCVText = async () => {
-    if (!data.cvText) {
-      toast.error('Please enter your CV text');
-      return;
+  // Helpers pour maj contrôlée et garder les index en phase avec les listes Step 1
+  const updateRequirementResponse = (idx: number, value: string) => {
+    const base = data.requirementResponses ?? [];
+    const next = [...base];
+    // s'assurer de la longueur
+    if (requirements.length > next.length) {
+      next.length = requirements.length;
+      next.fill('', base.length);
     }
-
-    setIsAnalyzing(true);
-    
-    try {
-      const cvData = await aiService.parseCVText(data.cvText);
-      
-      onUpdate({
-        ...data,
-        keySkills: cvData.skills,
-        education: cvData.education,
-        experience: cvData.experience,
-        candidateProfile: cvData.summary
-      });
-      
-      toast.success('CV analyzed successfully!');
-      
-    } catch (error) {
-      console.error('CV analysis error:', error);
-      toast.error('Failed to analyze CV. Please try again.');
-    } finally {
-      setIsAnalyzing(false);
-    }
+    next[idx] = value;
+    onUpdate({ ...data, requirementResponses: next });
   };
 
-  const performMatching = async () => {
-    if (!jobData || !data.keySkills?.length) {
-      toast.error('Please complete job analysis in Step 1 and add your skills first.');
-      return;
+  const updateResponsibilityResponse = (idx: number, value: string) => {
+    const base = data.responsibilityResponses ?? [];
+    const next = [...base];
+    if (responsibilities.length > next.length) {
+      next.length = responsibilities.length;
+      next.fill('', base.length);
     }
-
-    setIsMatching(true);
-    
-    try {
-      const matchingResults = await aiService.performMatching(
-        data.keySkills,
-        data.keyResponsibilities || [],
-        jobData.keyRequirements || [],
-        jobData.keyResponsibilities || []
-      );
-      
-      onUpdate({
-        ...data,
-        matchingResults
-      });
-      
-      toast.success('Matching analysis completed!');
-      
-    } catch (error) {
-      console.error('Matching error:', error);
-      toast.error('Failed to perform matching analysis. Please try again.');
-    } finally {
-      setIsMatching(false);
-    }
-  };
-
-  const getGradeColor = (grade: string) => {
-    switch (grade) {
-      case 'High': return 'text-green-600 bg-green-100';
-      case 'Moderate': return 'text-yellow-600 bg-yellow-100';
-      case 'Low': return 'text-red-600 bg-red-100';
-      default: return 'text-gray-600 bg-gray-100';
-    }
-  };
-
-  const getGradeIcon = (grade: string) => {
-    switch (grade) {
-      case 'High': return <TrendingUp className="h-4 w-4" />;
-      case 'Moderate': return <Minus className="h-4 w-4" />;
-      case 'Low': return <TrendingDown className="h-4 w-4" />;
-      default: return null;
-    }
+    next[idx] = value;
+    onUpdate({ ...data, responsibilityResponses: next });
   };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">Your Profile & Experience</h2>
-        <p className="text-gray-600">
-          Compare what the company is looking for with what you bring to the table.
-        </p>
+      {/* Header */}
+      <div className="text-center">
+        <h2 className="text-2xl font-bold text-gray-900">Your Profile & Experience</h2>
+        <p className="text-gray-600">Alignez vos atouts sur les attentes du poste.</p>
       </div>
 
-      {/* Two Column Comparison */}
+      {/* Global Scoring */}
+      <div className="flex justify-center">
+        <div
+          className={`flex items-center justify-center w-28 h-28 rounded-full border-4 ${getScoreColor(score)} ${getScoreBg(score)}`}
+          aria-label="Global Match Score"
+          title="Global Match Score"
+        >
+          <div className="text-center">
+            <div className={`text-3xl font-extrabold leading-none ${score === null ? 'text-gray-600' : ''}`}>
+              {score === null ? '—' : `${score}`}
+            </div>
+            <div className="text-xs font-medium uppercase tracking-wide text-gray-600">/ 100</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Deux colonnes : Requirements / Responsibilities */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Left Column: What the Company is Looking For */}
+        {/* Colonne gauche : Key Requirements */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
           <h3 className="text-xl font-semibold text-blue-900 mb-6 flex items-center">
             <Building className="h-6 w-6 mr-2" />
-            What the Company is Looking For
+            Key Requirements
           </h3>
-          
-          {/* Key Requirements */}
-          <div className="mb-6">
-            <h4 className="text-lg font-medium text-blue-800 mb-3">Key Requirements</h4>
-            <div className="space-y-2">
-              {(jobData?.keyRequirements || []).length === 0 ? (
-                <p className="text-blue-600 text-sm italic">Complete Step 1 Job Analysis to see requirements</p>
-              ) : (
-                (jobData.keyRequirements || []).map((requirement: string, index: number) => (
-                  <div key={index} className="bg-white p-3 rounded border border-blue-200">
-                    <p className="text-gray-800 text-sm">{requirement}</p>
+
+          {requirements.length === 0 ? (
+            <p className="text-blue-600 text-sm italic">
+              Complete Step 1 Job Analysis to see requirements
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {requirements.map((req, idx) => (
+                <div key={idx} className="bg-white rounded-lg border border-blue-200 p-4">
+                  <div className="text-gray-800 text-sm">{req}</div>
+                  <div className="mt-3">
+                    <label className="block text-xs font-medium text-blue-800 mb-1">
+                      Votre éducation/expérience en lien avec ce requirement
+                    </label>
+                    <textarea
+                      value={(data.requirementResponses?.[idx] ?? '')}
+                      onChange={(e) => updateRequirementResponse(idx, e.target.value)}
+                      placeholder="Expliquez brièvement en quoi votre éducation ou expérience répond à cette exigence…"
+                      rows={3}
+                      className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    />
                   </div>
-                ))
-              )}
-            </div>
-          </div>
-          
-          {/* Key Responsibilities */}
-          <div>
-            <h4 className="text-lg font-medium text-blue-800 mb-3">Key Responsibilities</h4>
-            <div className="space-y-2">
-              {(jobData?.keyResponsibilities || []).length === 0 ? (
-                <p className="text-blue-600 text-sm italic">Complete Step 1 Job Analysis to see responsibilities</p>
-              ) : (
-                (jobData.keyResponsibilities || []).map((responsibility: string, index: number) => (
-                  <div key={index} className="bg-white p-3 rounded border border-blue-200">
-                    <p className="text-gray-800 text-sm">{responsibility}</p>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-        
-        {/* Right Column: What You're Bringing */}
-        <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-          <h3 className="text-xl font-semibold text-green-900 mb-6 flex items-center">
-            <User className="h-6 w-6 mr-2" />
-            What You're Bringing to the Company
-          </h3>
-          
-          {/* Education */}
-          <div className="mb-6">
-            <h4 className="text-lg font-medium text-green-800 mb-3 flex items-center">
-              <GraduationCap className="h-5 w-5 mr-2" />
-              Education & Qualifications
-            </h4>
-            <div className="space-y-2">
-              {(data.education || []).map((edu, index) => (
-                <div key={index} className="flex space-x-2">
-                  <input
-                    type="text"
-                    value={edu}
-                    onChange={(e) => updateEducation(index, e.target.value)}
-                    placeholder="e.g., Bachelor's in Computer Science, MIT (2018)"
-                    className="flex-1 px-3 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
-                  />
-                  <button
-                    onClick={() => removeEducation(index)}
-                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
                 </div>
               ))}
-              <button
-                onClick={addEducation}
-                className="text-green-600 hover:text-green-800 text-sm font-medium flex items-center"
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Add Education
-              </button>
-            </div>
-          </div>
-          
-          {/* Experience */}
-          <div>
-            <h4 className="text-lg font-medium text-green-800 mb-3 flex items-center">
-              <Briefcase className="h-5 w-5 mr-2" />
-              Work Experience
-            </h4>
-            <div className="space-y-2">
-              {(data.experience || []).map((exp, index) => (
-                <div key={index} className="flex space-x-2">
-                  <input
-                    type="text"
-                    value={exp}
-                    onChange={(e) => updateExperience(index, e.target.value)}
-                    placeholder="e.g., Senior Developer at TechCorp (2020-2023)"
-                    className="flex-1 px-3 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
-                  />
-                  <button
-                    onClick={() => removeExperience(index)}
-                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-              <button
-                onClick={addExperience}
-                className="text-green-600 hover:text-green-800 text-sm font-medium flex items-center"
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Add Experience
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* AI CV Analysis Section */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg border border-blue-200">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <Zap className="h-5 w-5 text-blue-600 mr-2" />
-          AI-Powered CV Analysis
-        </h3>
-        
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              CV Text
-            </label>
-            <textarea
-              value={data.cvText || ''}
-              onChange={(e) => handleChange('cvText', e.target.value)}
-              placeholder="Paste your complete CV text here for AI analysis..."
-              rows={8}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            />
-            <button
-              onClick={analyzeCVText}
-              disabled={isAnalyzing || !data.cvText}
-              className="mt-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-            >
-              {isAnalyzing ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Zap className="h-4 w-4 mr-2" />
-              )}
-              {isAnalyzing ? 'Analyzing CV...' : 'Analyze CV'}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Candidate Profile */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          <User className="inline h-4 w-4 mr-1" />
-          Candidate Profile Summary
-        </label>
-        <textarea
-          value={data.candidateProfile || ''}
-          onChange={(e) => handleChange('candidateProfile', e.target.value)}
-          placeholder="Brief summary of your professional background, key strengths, and career objectives..."
-          rows={4}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-        />
-      </div>
-
-      {/* Key Skills */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          <Award className="inline h-4 w-4 mr-1" />
-          Key Skills
-        </label>
-        <div className="space-y-2">
-          {(data.keySkills || []).map((skill, index) => (
-            <div key={index} className="flex space-x-2">
-              <input
-                type="text"
-                value={skill}
-                onChange={(e) => updateSkill(index, e.target.value)}
-                placeholder="e.g., React, Node.js, Python"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              />
-              <button
-                onClick={() => removeSkill(index)}
-                className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-          <button
-            onClick={addSkill}
-            className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
-          >
-            + Add Skill
-          </button>
-        </div>
-      </div>
-
-      {/* Matching Analysis */}
-      <div className="bg-gradient-to-r from-green-50 to-blue-50 p-6 rounded-lg border border-green-200">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <Zap className="h-5 w-5 text-green-600 mr-2" />
-          AI Matching Analysis
-        </h3>
-        
-        <div className="space-y-4">
-          <p className="text-sm text-gray-600">
-            Compare your skills and experience against the job requirements to see how well you match.
-          </p>
-          
-          <button
-            onClick={performMatching}
-            disabled={isMatching || !jobData || !data.keySkills?.length}
-            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-          >
-            {isMatching ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <Zap className="h-4 w-4 mr-2" />
-            )}
-            {isMatching ? 'Analyzing Match...' : 'Analyze Match'}
-          </button>
-
-          {data.matchingResults && (
-            <div className="mt-6 space-y-4">
-              {/* Overall Score */}
-              <div className="bg-white p-4 rounded-lg border">
-                <h4 className="font-semibold text-gray-900 mb-2">Overall Match Score</h4>
-                <div className="flex items-center space-x-4">
-                  <div className="text-3xl font-bold text-indigo-600">
-                    {Math.round(data.matchingResults.overallScore)}%
-                  </div>
-                  <div className="flex-1">
-                    <div className="w-full bg-gray-200 rounded-full h-3">
-                      <div 
-                        className="bg-indigo-600 h-3 rounded-full transition-all duration-500"
-                        style={{ width: `${data.matchingResults.overallScore}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Match Distribution */}
-              <div className="bg-white p-4 rounded-lg border">
-                <h4 className="font-semibold text-gray-900 mb-3">Match Distribution</h4>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-green-600">
-                      {data.matchingResults.distribution.high}
-                    </div>
-                    <div className="text-sm text-gray-600">High Matches</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-yellow-600">
-                      {data.matchingResults.distribution.moderate}
-                    </div>
-                    <div className="text-sm text-gray-600">Moderate Matches</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-red-600">
-                      {data.matchingResults.distribution.low}
-                    </div>
-                    <div className="text-sm text-gray-600">Low Matches</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Individual Matches */}
-              <div className="bg-white p-4 rounded-lg border">
-                <h4 className="font-semibold text-gray-900 mb-3">Detailed Skill Matches</h4>
-                <div className="space-y-3">
-                  {data.matchingResults.matches.map((match, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex-1">
-                        <div className="font-medium text-gray-900">{match.skill}</div>
-                        <div className="text-sm text-gray-600 mt-1">{match.reasoning}</div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center space-x-1 ${getGradeColor(match.grade)}`}>
-                          {getGradeIcon(match.grade)}
-                          <span>{match.grade}</span>
-                        </span>
-                        <div className="text-sm font-medium text-gray-600">
-                          {Math.round(match.score * 100)}%
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
           )}
         </div>
+
+        {/* Colonne droite : Key Responsibilities */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+          <h3 className="text-xl font-semibold text-blue-900 mb-6 flex items-center">
+            <ClipboardList className="h-6 w-6 mr-2" />
+            Key Responsibilities
+          </h3>
+
+          {responsibilities.length === 0 ? (
+            <p className="text-blue-600 text-sm italic">
+              Complete Step 1 Job Analysis to see responsibilities
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {responsibilities.map((res, idx) => (
+                <div key={idx} className="bg-white rounded-lg border border-blue-200 p-4">
+                  <div className="text-gray-800 text-sm">{res}</div>
+                  <div className="mt-3">
+                    <label className="block text-xs font-medium text-blue-800 mb-1">
+                      Votre expérience concrète pour assumer cette responsabilité
+                    </label>
+                    <textarea
+                      value={(data.responsibilityResponses?.[idx] ?? '')}
+                      onChange={(e) => updateResponsibilityResponse(idx, e.target.value)}
+                      placeholder="Donnez un exemple ou un résultat mesurable qui prouve que vous pouvez assumer cette responsabilité…"
+                      rows={3}
+                      className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Petit rappel visuel de l’utilisateur (facultatif, conserve l’empreinte) */}
+      <div className="flex items-center justify-center text-gray-600 text-sm">
+        <User className="h-4 w-4 mr-2" />
+        Renseignez les zones de texte pour lier clairement votre parcours aux attentes du poste.
       </div>
     </div>
   );
