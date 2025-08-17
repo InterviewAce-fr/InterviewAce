@@ -47,10 +47,32 @@ const PreparationJourney: React.FC = () => {
   ];
 
   useEffect(() => {
-    if (id && user) {
-      fetchPreparation();
-    }
-  }, [id, user]);
+  if (!user) return;
+
+  // Treat missing id or "new" as create mode
+  if (!id || id === 'new') {
+    // Option A: start with a blank preparation object in-memory
+    setPreparation({
+      id: '',                // no id yet
+      title: '',
+      job_url: '',
+      is_complete: false,
+      step_1_data: {},
+      step_2_data: {},
+      step_3_data: {},
+      step_4_data: {},
+      step_5_data: {},
+      step_6_data: {},
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+    setLoading(false);
+    return;
+  }
+
+  // Edit mode
+  fetchPreparation();
+}, [id, user]);
 
   const fetchPreparation = async () => {
     try {
