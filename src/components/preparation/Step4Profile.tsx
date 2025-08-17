@@ -178,12 +178,6 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
           )}
         </div>
       </div>
-
-      {/* Petit rappel visuel de l’utilisateur (facultatif, conserve l’empreinte) */}
-      <div className="flex items-center justify-center text-gray-600 text-sm">
-        <User className="h-4 w-4 mr-2" />
-        Renseignez les zones de texte pour lier clairement votre parcours aux attentes du poste.
-      </div>
     </div>
   );
 };
