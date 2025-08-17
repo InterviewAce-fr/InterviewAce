@@ -54,7 +54,8 @@ export default function Step1JobAnalysis({ data, onUpdate }: Step1Props) {
         company_name: analysisResult.company_name || '',
         job_title: analysisResult.job_title || '',
         keyRequirements: analysisResult.required_profile || [],
-        keyResponsibilities: analysisResult.responsibilities || []
+        keyResponsibilities: analysisResult.responsibilities || [],
+        title: `${analysisResult.job_title || ''} at ${analysisResult.company_name || ''}`
       });
 
     } catch (err) {

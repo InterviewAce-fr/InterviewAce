@@ -229,7 +229,9 @@ export default function DashboardPage() {
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <h3 className="text-lg font-medium text-gray-900 mb-2">
-                              {prep.title || 'Untitled Preparation'}
+                              {prep.step_1_data?.job_title && prep.step_1_data?.company_name
+                                ? `${prep.step_1_data.job_title} at ${prep.step_1_data.company_name}`
+                                : prep.title || 'Untitled Preparation'}
                             </h3>
                             {prep.job_url && (
                               <p className="text-sm text-gray-600 mb-2 truncate">
