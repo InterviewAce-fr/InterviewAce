@@ -31,10 +31,14 @@ const PreparationJourney: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+
   const [currentStep, setCurrentStep] = useState(1);
   const [preparation, setPreparation] = useState<Preparation | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastEditedRef = React.useRef<{ step: number; data: any } | null>(null);
 
   const steps = [
     { number: 1, title: 'Job Analysis', component: Step1JobAnalysis },
@@ -43,36 +47,55 @@ const PreparationJourney: React.FC = () => {
     { number: 4, title: 'Your Profile', component: Step4Profile },
     { number: 5, title: 'Why Questions', component: Step5WhyQuestions },
     { number: 6, title: 'Interview Questions', component: Step6Questions },
-    { number: 7, title: 'Generate Report', component: Step7GenerateReport }
+    { number: 7, title: 'Generate Report', component: Step7GenerateReport },
   ];
 
   useEffect(() => {
-  if (!user) return;
+    if (!user) return;
 
-  // Treat missing id or "new" as create mode
-  if (!id || id === 'new') {
-    // Option A: start with a blank preparation object in-memory
-    setPreparation({
-      id: '',                // no id yet
-      title: '',
-      job_url: '',
-      is_complete: false,
-      step_1_data: {},
-      step_2_data: {},
-      step_3_data: {},
-      step_4_data: {},
-      step_5_data: {},
-      step_6_data: {},
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
-    setLoading(false);
-    return;
-  }
+    // Create mode
+    if (!id || id === 'new') {
+      setPreparation({
+        id: '', // not yet in DB
+        title: '',
+        job_url: '',
+        is_complete: false,
+        step_1_data: {},
+        step_2_data: {},
+        step_3_data: {},
+        step_4_data: {},
+        step_5_data: {},
+        step_6_data: {},
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      setLoading(false);
+      return;
+    }
 
-  // Edit mode
-  fetchPreparation();
-}, [id, user]);
+    // Edit mode
+    fetchPreparation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, user]);
+
+  // Best-effort flush on tab hide / page unload
+  useEffect(() => {
+    const onBeforeUnload = () => {
+      // pas d'attente possible ici
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushPendingSave(); // tente un flush
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchPreparation = async () => {
     try {
@@ -84,7 +107,7 @@ const PreparationJourney: React.FC = () => {
         .single();
 
       if (error) {
-        if (error.code === 'PGRST116') {
+        if ((error as any).code === 'PGRST116') {
           toast.error('Preparation not found');
           navigate('/dashboard');
           return;
@@ -92,7 +115,7 @@ const PreparationJourney: React.FC = () => {
         throw error;
       }
 
-      setPreparation(data);
+      setPreparation(data as Preparation);
     } catch (error) {
       console.error('Error fetching preparation:', error);
       toast.error('Failed to load preparation');
@@ -102,52 +125,121 @@ const PreparationJourney: React.FC = () => {
     }
   };
 
-  const updateStepData = async (stepNumber: number, data: any) => {
+  // Crée l'enregistrement si besoin et renvoie l'id
+  const ensurePreparationId = async (): Promise<string | undefined> => {
     if (!preparation) return;
+    if (preparation.id) return preparation.id;
 
+    try {
+      const payload = {
+        title: preparation.title ?? '',
+        job_url: preparation.job_url ?? '',
+        is_complete: false,
+        user_id: user!.id,
+        step_1_data: preparation.step_1_data ?? {},
+        step_2_data: preparation.step_2_data ?? {},
+        step_3_data: preparation.step_3_data ?? {},
+        step_4_data: preparation.step_4_data ?? {},
+        step_5_data: preparation.step_5_data ?? {},
+        step_6_data: preparation.step_6_data ?? {},
+      };
+
+      const { data, error } = await supabase
+        .from('preparations')
+        .insert(payload)
+        .select('id')
+        .single();
+
+      if (error) throw error;
+
+      setPreparation(prev => (prev ? { ...prev, id: (data as any).id } : prev));
+      return (data as any).id;
+    } catch (e) {
+      console.error('Error ensuring preparation id:', e);
+      toast.error('Failed to create preparation');
+    }
+  };
+
+  const persistStepToSupabase = async (stepNumber: number, data: any) => {
+    if (!preparation) return;
     setSaving(true);
     try {
+      const prepId = preparation.id || (await ensurePreparationId());
+      if (!prepId) return;
+
       const stepKey = `step_${stepNumber}_data`;
       const { error } = await supabase
         .from('preparations')
         .update({
           [stepKey]: data,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         })
-        .eq('id', preparation.id)
+        .eq('id', prepId)
         .eq('user_id', user!.id);
 
       if (error) throw error;
-
-      setPreparation(prev => prev ? {
-        ...prev,
-        [stepKey]: data,
-        updated_at: new Date().toISOString()
-      } : null);
-
-      toast.success('Progress saved');
-    } catch (error) {
-      console.error('Error updating step data:', error);
+    } catch (err) {
+      console.error('Error updating step data:', err);
       toast.error('Failed to save progress');
     } finally {
       setSaving(false);
     }
   };
 
-  const goToStep = (stepNumber: number) => {
+  const updateStepData = (stepNumber: number, data: any) => {
+    // 1) mise à jour locale immédiate
+    const stepKey = `step_${stepNumber}_data` as keyof Preparation;
+    setPreparation(prev => {
+      if (!prev) return prev as any;
+      return {
+        ...prev,
+        [stepKey]: data,
+        updated_at: new Date().toISOString(),
+      } as Preparation;
+    });
+
+    // 2) mémorise la dernière édition
+    lastEditedRef.current = { step: stepNumber, data };
+
+    // 3) sauvegarde debouncée
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = setTimeout(() => {
+      if (lastEditedRef.current) {
+        const { step, data } = lastEditedRef.current;
+        persistStepToSupabase(step, data);
+        lastEditedRef.current = null;
+      }
+      saveTimerRef.current = null;
+    }, 1000);
+  };
+
+  const flushPendingSave = async () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (lastEditedRef.current) {
+      const { step, data } = lastEditedRef.current;
+      lastEditedRef.current = null;
+      await persistStepToSupabase(step, data);
+    }
+  };
+
+  const nextStep = async () => {
+    await flushPendingSave();
+    if (currentStep < steps.length) setCurrentStep(currentStep + 1);
+  };
+
+  const prevStep = async () => {
+    await flushPendingSave();
+    if (currentStep > 1) setCurrentStep(currentStep - 1);
+  };
+
+  const goToStep = async (stepNumber: number) => {
+    await flushPendingSave();
     setCurrentStep(stepNumber);
-  };
-
-  const nextStep = () => {
-    if (currentStep < steps.length) {
-      setCurrentStep(currentStep + 1);
-    }
-  };
-
-  const prevStep = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
-    }
   };
 
   if (loading) {
@@ -172,7 +264,7 @@ const PreparationJourney: React.FC = () => {
   }
 
   const CurrentStepComponent = steps[currentStep - 1].component;
-  const currentStepData = preparation[`step_${currentStep}_data` as keyof Preparation] || {};
+  const currentStepData = (preparation as any)[`step_${currentStep}_data`] || {};
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -182,7 +274,10 @@ const PreparationJourney: React.FC = () => {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
               <button
-                onClick={() => navigate('/dashboard')}
+                onClick={async () => {
+                  await flushPendingSave();
+                  navigate('/dashboard');
+                }}
                 className="flex items-center text-gray-600 hover:text-gray-900"
               >
                 <ChevronLeft className="h-5 w-5 mr-1" />
@@ -224,15 +319,19 @@ const PreparationJourney: React.FC = () => {
                     step.number
                   )}
                 </button>
-                <span className={`ml-2 text-sm font-medium ${
-                  currentStep === step.number ? 'text-indigo-600' : 'text-gray-600'
-                }`}>
+                <span
+                  className={`ml-2 text-sm font-medium ${
+                    currentStep === step.number ? 'text-indigo-600' : 'text-gray-600'
+                  }`}
+                >
                   {step.title}
                 </span>
                 {index < steps.length - 1 && (
-                  <div className={`ml-4 w-8 h-0.5 ${
-                    currentStep > step.number ? 'bg-green-600' : 'bg-gray-200'
-                  }`} />
+                  <div
+                    className={`ml-4 w-8 h-0.5 ${
+                      currentStep > step.number ? 'bg-green-600' : 'bg-gray-200'
+                    }`}
+                  />
                 )}
               </div>
             ))}
@@ -246,10 +345,10 @@ const PreparationJourney: React.FC = () => {
           <CurrentStepComponent
             data={currentStepData}
             onUpdate={(data: any) => updateStepData(currentStep, data)}
-            cvData={preparation.step_4_data}
-            jobData={preparation.step_1_data}
-            swotData={preparation.step_3_data}
-            matchingResults={preparation.step_4_data?.matchingResults}
+            cvData={(preparation as any).step_4_data}
+            jobData={(preparation as any).step_1_data}
+            swotData={(preparation as any).step_3_data}
+            matchingResults={(preparation as any).step_4_data?.matchingResults}
           />
 
           {/* Navigation */}
