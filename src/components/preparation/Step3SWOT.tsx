@@ -11,9 +11,10 @@ interface Step3Data {
 interface Step3Props {
   data: Step3Data;
   onUpdate: (data: Step3Data) => void;
+  companyName?: string;
 }
 
-const Step3SWOT: React.FC<Step3Props> = ({ data, onUpdate }) => {
+const Step3SWOT: React.FC<Step3Props> = ({ data, onUpdate, companyName }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,7 +46,7 @@ const Step3SWOT: React.FC<Step3Props> = ({ data, onUpdate }) => {
       setError(null);
       setLoading(true);
       const existing = normalizedData; // on envoie le déjà-saisi pour meilleure complétion
-      const swot = await aiService.generateSWOT({ existing });
+      const swot = await aiService.generateSWOT({ company_name: companyName, existing });
       onUpdate({
         strengths: smartSet(normalizedData.strengths, swot.strengths),
         weaknesses: smartSet(normalizedData.weaknesses, swot.weaknesses),

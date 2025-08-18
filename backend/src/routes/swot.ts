@@ -10,6 +10,7 @@ router.post(
   async (req, res) => {
   try {
     const result = await generateSWOT({
+      company_name: req.body?.company_name,
       existing: req.body?.existing
     });
     res.json(result);

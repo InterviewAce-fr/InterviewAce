@@ -357,6 +357,7 @@ const PreparationJourney: React.FC = () => {
             jobData={(preparation as any).step_1_data}
             swotData={(preparation as any).step_3_data}
             matchingResults={(preparation as any).step_4_data?.matchingResults}
+            companyName={(preparation as any).step_1_data?.company_name}
           />
 
           {/* Navigation */}

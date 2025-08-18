@@ -39,18 +39,21 @@ export async function analyzeJobFromText(jobText: string) {
 }
 
 export async function generateSWOT(payload: {
+  company_name?: string;
   existing?: { strengths?: string[]; weaknesses?: string[]; opportunities?: string[]; threats?: string[] };
 }) {
-  const { existing } = payload || {};
+  const { company_name, existing } = payload || {};
 
   const systemPrompt = `Return strict JSON with exactly these keys.
 {"strengths":[],"weaknesses":[],"opportunities":[],"threats":[]}
 Rules:
 - Arrays only. 3–8 concise bullet strings per array.
 - No markdown, numbers, or emojis, just short phrases.
+- Take into account the company name if provided, to contextualize the SWOT
 - If 'existing' contains items, complement them (avoid duplicates, add missing angles).`;
 
   const userContent = {
+    company_name: company_name ?? null,
     existing: existing ?? null
   };
 

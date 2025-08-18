@@ -125,6 +125,7 @@ class AIService {
   }
 
   async generateSWOT(input: {
+    company_name?: string;
     existing?: SWOTResult; // contenu déjà saisi côté UI (optionnel)
   }): Promise<SWOTResult> {
     const headers = await authHeaders();
