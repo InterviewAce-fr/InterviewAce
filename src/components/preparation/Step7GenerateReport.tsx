@@ -37,7 +37,7 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
     setJobStatus(null);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/pdf/generate`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/pdf/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
