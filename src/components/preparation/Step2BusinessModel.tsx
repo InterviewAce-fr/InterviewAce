@@ -258,7 +258,7 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate,
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
               </svg>
             )}
-            Pré‑remplir avec l’IA
+            Generate
           </button>
           {aiError && <span className="text-sm text-red-600">{aiError}</span>}
         </div>
