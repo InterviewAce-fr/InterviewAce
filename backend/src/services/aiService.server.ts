@@ -76,3 +76,55 @@ Rules:
     threats: Array.isArray(parsed.threats) ? parsed.threats : []
   };
 }
+
+export async function generateBusinessModel(payload: {
+  company_name?: string;
+  existing?: {
+    keyPartners?: string[];
+    keyActivities?: string[];
+    keyResources?: string[];
+    valuePropositions?: string[];
+    customerRelationships?: string[];
+    channels?: string[];
+    customerSegments?: string[];
+    costStructure?: string[];
+    revenueStreams?: string[];
+  };
+}) {
+  const { company_name, existing } = payload || {};
+
+  const systemPrompt = `Return strict JSON with exactly these keys.
+{"keyPartners":[],"keyActivities":[],"keyResources":[],"valuePropositions":[],"customerRelationships":[],"channels":[],"customerSegments":[],"costStructure":[],"revenueStreams":[]}
+Rules:
+- Arrays only. 3–8 concise bullet strings per array.
+- No markdown, numbers, or emojis, just short phrases.
+- Use the company name if provided to contextualize likely partners, channels, segments, etc.
+- If 'existing' contains items, complement them (avoid duplicates, add missing angles).`;
+
+  const userContent = { company_name: company_name ?? null, existing: existing ?? null };
+
+  const resp = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    temperature: 0.4,
+    max_tokens: 1200,
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: JSON.stringify(userContent) }
+    ]
+  });
+
+  const d = JSON.parse(resp.choices?.[0]?.message?.content ?? '{}');
+  const arr = (x: any) => (Array.isArray(x) ? x : []);
+  return {
+    keyPartners: arr(d.keyPartners),
+    keyActivities: arr(d.keyActivities),
+    keyResources: arr(d.keyResources),
+    valuePropositions: arr(d.valuePropositions),
+    customerRelationships: arr(d.customerRelationships),
+    channels: arr(d.channels),
+    customerSegments: arr(d.customerSegments),
+    costStructure: arr(d.costStructure),
+    revenueStreams: arr(d.revenueStreams)
+  };
+}

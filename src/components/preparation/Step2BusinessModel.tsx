@@ -1,6 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, X, HelpCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from '../ui/Toast';
+import { aiService } from '@/lib/aiService';
+
+const normKey = (s: string) => (s || '').toLowerCase().trim();
+const mergeNoDup = (base: string[], add: string[]) => {
+  const seen = new Set(base.map(normKey));
+  const append = (add || []).filter(x => {
+    const k = normKey(x);
+    if (k && !seen.has(k)) { seen.add(k); return true; }
+    return false;
+  });
+  return [...base, ...append];
+};
+
+const smartSet = (current: string[], incoming: string[]) =>
+  (!current || current.length === 0) ? (incoming || []) : mergeNoDup(current, incoming || []);
 
 interface BusinessModelData {
   keyPartners: string[];
@@ -17,9 +32,10 @@ interface BusinessModelData {
 interface Step2BusinessModelProps {
   data: BusinessModelData;
   onUpdate: (data: BusinessModelData) => void;
+  companyName?: string;
 }
 
-const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate }) => {
+const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate, companyName }) => {
   const [businessModel, setBusinessModel] = useState<BusinessModelData>({
     keyPartners: Array.isArray(data?.keyPartners) ? data.keyPartners : [],
     keyActivities: Array.isArray(data?.keyActivities) ? data.keyActivities : [],
@@ -31,7 +47,7 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate 
     costStructure: Array.isArray(data?.costStructure) ? data.costStructure : [],
     revenueStreams: Array.isArray(data?.revenueStreams) ? data.revenueStreams : []
   });
-  const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [saveTimeout, setSaveTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   useEffect(() => {
@@ -191,14 +207,61 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate 
     setHasUnsavedChanges(true);
   };
 
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const handleGenerateBMC = async () => {
+    try {
+      setAiError(null);
+      setAiLoading(true);
+      const ai = await aiService.generateBusinessModel({
+        company_name: companyName,
+        existing: businessModel
+      });
+      const next: BusinessModelData = {
+        keyPartners: smartSet(businessModel.keyPartners, ai.keyPartners),
+        keyActivities: smartSet(businessModel.keyActivities, ai.keyActivities),
+        keyResources: smartSet(businessModel.keyResources, ai.keyResources),
+        valuePropositions: smartSet(businessModel.valuePropositions, ai.valuePropositions),
+        customerRelationships: smartSet(businessModel.customerRelationships, ai.customerRelationships),
+        channels: smartSet(businessModel.channels, ai.channels),
+        customerSegments: smartSet(businessModel.customerSegments, ai.customerSegments),
+        costStructure: smartSet(businessModel.costStructure, ai.costStructure),
+        revenueStreams: smartSet(businessModel.revenueStreams, ai.revenueStreams)
+      };
+      setBusinessModel(next);
+      setHasUnsavedChanges(true); // déclenche la sauvegarde debouncée existante
+      toast.success('Pré‑remplissage IA effectué');
+    } catch (e: any) {
+      setAiError(e?.message || 'Une erreur est survenue');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto p-6">
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-4">Business Model Canvas</h2>
-        <p className="text-lg text-gray-600">
-          Map out your business model using the nine key building blocks. This will help you understand 
-          how the company creates, delivers, and captures value.
-        </p>
+      <div className="flex items-start justify-between mb-8">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-900 mb-4">Business Model Canvas</h2>
+          <p className="text-lg text-gray-600">Map out your business model using the nine key building blocks...</p>
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          <button
+            onClick={handleGenerateBMC}
+            disabled={aiLoading}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {aiLoading && (
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+            )}
+            Pré‑remplir avec l’IA
+          </button>
+          {aiError && <span className="text-sm text-red-600">{aiError}</span>}
+        </div>
       </div>
 
       <div className="grid grid-cols-5 grid-rows-3 gap-4 h-[800px]" style={{

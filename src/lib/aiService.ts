@@ -48,6 +48,18 @@ async function authHeaders() {
   };
 }
 
+export interface BusinessModelData {
+  keyPartners: string[];
+  keyActivities: string[];
+  keyResources: string[];
+  valuePropositions: string[];
+  customerRelationships: string[];
+  channels: string[];
+  customerSegments: string[];
+  costStructure: string[];
+  revenueStreams: string[];
+}
+
 class AIService {
 
   async analyzeJobFromUrl(_url: string): Promise<JobAnalysisResult> {
@@ -141,6 +153,32 @@ class AIService {
       weaknesses: Array.isArray(d.weaknesses) ? d.weaknesses : [],
       opportunities: Array.isArray(d.opportunities) ? d.opportunities : [],
       threats: Array.isArray(d.threats) ? d.threats : []
+    };
+  }
+
+  async generateBusinessModel(input: {
+    company_name?: string;
+    existing?: BusinessModelData;
+  }): Promise<BusinessModelData> {
+    const headers = await authHeaders();
+    const r = await fetch(api(`/ai/business-model`), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(input)
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d?.error || 'Failed to generate Business Model');
+    const arr = (x: any) => (Array.isArray(x) ? x : []);
+    return {
+      keyPartners: arr(d.keyPartners),
+      keyActivities: arr(d.keyActivities),
+      keyResources: arr(d.keyResources),
+      valuePropositions: arr(d.valuePropositions),
+      customerRelationships: arr(d.customerRelationships),
+      channels: arr(d.channels),
+      customerSegments: arr(d.customerSegments),
+      costStructure: arr(d.costStructure),
+      revenueStreams: arr(d.revenueStreams)
     };
   }
 
