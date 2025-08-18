@@ -350,6 +350,13 @@ const PreparationJourney: React.FC = () => {
       {/* Step Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white rounded-lg shadow-sm p-6">
+          {currentStep === 7 ? (
+            <Step7GenerateReport
+              data={currentStepData}
+              onUpdate={(data: any) => updateStepData(currentStep, data)}
+              preparation={preparation}
+            />
+          ) : (
           <CurrentStepComponent
             data={currentStepData}
             onUpdate={(data: any) => updateStepData(currentStep, data)}
@@ -359,6 +366,7 @@ const PreparationJourney: React.FC = () => {
             matchingResults={(preparation as any).step_4_data?.matchingResults}
             companyName={(preparation as any).step_1_data?.company_name}
           />
+          )}
 
           {/* Navigation */}
           <div className="flex justify-between mt-8 pt-6 border-t">

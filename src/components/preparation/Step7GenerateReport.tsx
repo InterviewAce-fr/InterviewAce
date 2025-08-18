@@ -1,12 +1,19 @@
 import React, { useState } from 'react';
 import { FileText, Loader2, Download, CheckCircle, Crown } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 interface Step7GenerateReportProps {
   data: any;
   onUpdate: (data: any) => void;
   preparation: any;
 }
+
+const ensureSessionToken = async (tokenFromCtx?: string) => {
+  if (tokenFromCtx) return tokenFromCtx;
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token;
+};
 
 const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }) => {
   const { user, session, profile } = useAuth();
@@ -15,7 +22,12 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
   const [jobStatus, setJobStatus] = useState<string | null>(null);
 
   const handleGenerateReport = async () => {
-    if (!preparation || !session?.access_token) {
+    if (!preparation) {
+      alert('Preparation not loaded.');
+      return;
+    }
+    const token = await ensureSessionToken(session?.access_token);
+    if (!token) {
       alert('Authentication required to generate report.');
       return;
     }
@@ -29,7 +41,7 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           preparationData: {
