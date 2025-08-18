@@ -1,10 +1,13 @@
 import { Router } from 'express';
 import { generateSWOT } from '../services/aiService.server';
-import { requireAuth } from '../middleware/auth';
+import { authenticateToken, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
-router.post('/swot', requireAuth, async (req, res) => {
+router.post(
+  '/swot',
+  authenticateToken,
+  async (req, res) => {
   try {
     const result = await generateSWOT({
       existing: req.body?.existing
