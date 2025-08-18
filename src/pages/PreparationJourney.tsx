@@ -43,7 +43,7 @@ const PreparationJourney: React.FC = () => {
   const steps = [
     { number: 1, title: 'Job Analysis', component: Step1JobAnalysis },
     { number: 2, title: 'Business Model', component: Step2BusinessModel },
-    { number: 3, title: 'Company strategy', component: Step3SWOT },
+    { number: 3, title: 'Company Strategy', component: Step3SWOT },
     { number: 4, title: 'Your Profile', component: Step4Profile },
     { number: 5, title: 'Why Questions', component: Step5WhyQuestions },
     { number: 6, title: 'Interview Questions', component: Step6Questions },
