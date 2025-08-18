@@ -37,3 +37,39 @@ export async function analyzeJobFromText(jobText: string) {
     responsibilities: Array.isArray(parsed.responsibilities) ? parsed.responsibilities : []
   };
 }
+
+export async function generateSWOT(payload: {
+  existing?: { strengths?: string[]; weaknesses?: string[]; opportunities?: string[]; threats?: string[] };
+}) {
+  const { existing } = payload || {};
+
+  const systemPrompt = `Return strict JSON with exactly these keys.
+{"strengths":[],"weaknesses":[],"opportunities":[],"threats":[]}
+Rules:
+- Arrays only. 3–8 concise bullet strings per array.
+- No markdown, numbers, or emojis, just short phrases.
+- If 'existing' contains items, complement them (avoid duplicates, add missing angles).`;
+
+  const userContent = {
+    existing: existing ?? null
+  };
+
+  const resp = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    temperature: 0.4,
+    max_tokens: 800,
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: JSON.stringify(userContent) }
+    ]
+  });
+
+  const parsed = JSON.parse(resp.choices?.[0]?.message?.content ?? '{}');
+  return {
+    strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
+    weaknesses: Array.isArray(parsed.weaknesses) ? parsed.weaknesses : [],
+    opportunities: Array.isArray(parsed.opportunities) ? parsed.opportunities : [],
+    threats: Array.isArray(parsed.threats) ? parsed.threats : []
+  };
+}

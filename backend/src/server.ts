@@ -18,6 +18,7 @@ import uploadRoutes from './routes/upload';
 import stripeRoutes from './routes/stripe';
 import scrapeRoutes from './routes/scrape';
 import aiRoutes from './routes/job';
+import swotRoutes from './routes/swot';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -103,6 +104,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/scrape', scrapeRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/ai', swotRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

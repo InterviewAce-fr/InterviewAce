@@ -29,6 +29,13 @@ export interface MatchAnalysisResult {
   recommendations: string[];
 }
 
+export interface SWOTResult {
+  strengths: string[];
+  weaknesses: string[];
+  opportunities: string[];
+  threats: string[];
+}
+
 const BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, ''); // retire le / final
 const api = (p: string) => `${BASE}${p.startsWith('/') ? '' : '/'}${p}`;
 
@@ -116,6 +123,26 @@ class AIService {
     if (Array.isArray(d.answers)) return d.answers;
     return [];
   }
+
+  async generateSWOT(input: {
+    existing?: SWOTResult; // contenu déjà saisi côté UI (optionnel)
+  }): Promise<SWOTResult> {
+    const headers = await authHeaders();
+    const r = await fetch(api(`/ai/swot`), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(input)
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d?.error || 'Failed to generate SWOT');
+    return {
+      strengths: Array.isArray(d.strengths) ? d.strengths : [],
+      weaknesses: Array.isArray(d.weaknesses) ? d.weaknesses : [],
+      opportunities: Array.isArray(d.opportunities) ? d.opportunities : [],
+      threats: Array.isArray(d.threats) ? d.threats : []
+    };
+  }
+
 }
 
 export const aiService = new AIService();

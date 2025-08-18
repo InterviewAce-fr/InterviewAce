@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { aiService } from '@/lib/aiService';
 
 interface Step3Data {
   strengths: string[];
@@ -13,12 +14,49 @@ interface Step3Props {
 }
 
 const Step3SWOT: React.FC<Step3Props> = ({ data, onUpdate }) => {
-  // Normalize data to ensure all properties are arrays
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const normalizedData: Step3Data = {
     strengths: Array.isArray(data?.strengths) ? data.strengths : [],
     weaknesses: Array.isArray(data?.weaknesses) ? data.weaknesses : [],
     opportunities: Array.isArray(data?.opportunities) ? data.opportunities : [],
     threats: Array.isArray(data?.threats) ? data.threats : []
+  };
+
+  const normKey = (s: string) => s.toLowerCase().trim();
+  const mergeNoDup = (base: string[], add: string[]) => {
+    const seen = new Set(base.map(normKey));
+    const append = add.filter(x => {
+      const k = normKey(x);
+      if (k && !seen.has(k)) { seen.add(k); return true; }
+      return false;
+    });
+    return [...base, ...append];
+  };
+
+  const smartSet = (current: string[], incoming: string[]) => {
+    if (!current || current.length === 0) return incoming;
+    return mergeNoDup(current, incoming);
+  };
+
+  const handleGenerate = async () => {
+    try {
+      setError(null);
+      setLoading(true);
+      const existing = normalizedData; // on envoie le déjà-saisi pour meilleure complétion
+      const swot = await aiService.generateSWOT({ existing });
+      onUpdate({
+        strengths: smartSet(normalizedData.strengths, swot.strengths),
+        weaknesses: smartSet(normalizedData.weaknesses, swot.weaknesses),
+        opportunities: smartSet(normalizedData.opportunities, swot.opportunities),
+        threats: smartSet(normalizedData.threats, swot.threats)
+      });
+    } catch (e: any) {
+      setError(e?.message || 'Une erreur est survenue.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleItemChange = (category: keyof Step3Data, index: number, value: string) => {
@@ -77,11 +115,27 @@ const Step3SWOT: React.FC<Step3Props> = ({ data, onUpdate }) => {
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold text-gray-800 mb-2">Company Strategy</h2>
-        <p className="text-gray-600">
-          Analyze the company's strategic position to understand how you can contribute to their success.
-        </p>
+      <div className="flex items-start justify-between mb-8">
+        <div className="text-left">
+          <h2 className="text-3xl font-bold text-gray-800 mb-2">Company Strategy</h2>
+          <p className="text-gray-600">Analyze the company's strategic position to understand how you can contribute to their success.</p>
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          <button
+            onClick={handleGenerate}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loading && (
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+            )}
+            Generate
+          </button>
+          {error && <span className="text-sm text-red-600">{error}</span>}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
