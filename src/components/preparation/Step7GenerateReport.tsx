@@ -28,7 +28,11 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
   };
 
   const buildPreparationPayload = (p: any) => {
+
+    const derived = buildTitleFromStep1(p?.step_1_data);
+
     const safeTitle =
+      derived ||
       (p?.title && p.title.trim()) ||
       buildTitleFromStep1(p?.step_1_data) ||
       'Interview Preparation';

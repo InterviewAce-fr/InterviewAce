@@ -190,6 +190,7 @@ const PreparationJourney: React.FC = () => {
         .update({
           [stepKey]: data,
           updated_at: new Date().toISOString(),
+          ...extra,
         })
         .eq('id', prepId)
         .eq('user_id', user!.id);
