@@ -6,60 +6,45 @@ import { logger } from '../utils/logger';
 
 export async function generatePDFReport(preparationData: any, isPremium: boolean = false): Promise<Buffer> {
   let browser;
-  
   try {
-    // Read HTML template
     const templatePath = path.join(__dirname, '../templates/report-template.html');
     const templateHtml = fs.readFileSync(templatePath, 'utf8');
-    
-    // Compile template with Handlebars
     const template = handlebars.compile(templateHtml);
-    
-    // Prepare data for template
+
     const templateData = {
       ...preparationData,
       isPremium,
       generatedAt: new Date().toLocaleDateString(),
       watermark: !isPremium,
-      // Helper functions for template
       hasData: (data: any) => data && Object.keys(data).length > 0,
       formatArray: (arr: string[]) => arr?.filter(item => item?.trim()).join(', ') || 'Not specified'
     };
-    
-    // Generate HTML
+
     const html = template(templateData);
-    
-    // Launch Puppeteer
+
+
+    const executablePath =
+      process.env.PUPPETEER_EXECUTABLE_PATH || // jontewks/puppeteer-heroku-buildpack
+      process.env.GOOGLE_CHROME_BIN ||         // heroku-buildpack-google-chrome
+      undefined;                               // local/dev
+
     browser = await puppeteer.launch({
-      headless: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      headless: 'new',
+      executablePath,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu'
+        '--disable-dev-shm-usage'
       ]
     });
-    
+
     const page = await browser.newPage();
-    
-    // Set content and wait for fonts/images to load
     await page.setContent(html, { waitUntil: 'networkidle0' });
-    
-    // Generate PDF
+
     const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,
-      margin: {
-        top: '20mm',
-        right: '15mm',
-        bottom: '20mm',
-        left: '15mm'
-      },
+      margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' },
       displayHeaderFooter: true,
       headerTemplate: `
         <div style="font-size: 10px; width: 100%; text-align: center; color: #666;">
@@ -74,17 +59,14 @@ export async function generatePDFReport(preparationData: any, isPremium: boolean
         </div>
       `
     });
-    
+
     logger.info(`PDF generated successfully (${pdfBuffer.length} bytes)`);
     return pdfBuffer;
-    
   } catch (error) {
     logger.error('PDF generation error:', error);
     throw new Error(`Failed to generate PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
   } finally {
-    if (browser) {
-      await browser.close();
-    }
+    if (browser) await browser.close();
   }
 }
 
