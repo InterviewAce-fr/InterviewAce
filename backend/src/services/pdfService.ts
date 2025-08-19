@@ -29,7 +29,7 @@ export async function generatePDFReport(preparationData: any, isPremium: boolean
       undefined;                               // local/dev
 
     browser = await puppeteer.launch({
-      headless: 'new',
+      headless: true,
       executablePath,
       args: [
         '--no-sandbox',
