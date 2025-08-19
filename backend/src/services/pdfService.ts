@@ -5,52 +5,73 @@ import path from 'path';
 import { logger } from '../utils/logger';
 
 
-const resolveChromePath = () => {
-  const cands = [
-    process.env.PUPPETEER_EXECUTABLE_PATH,  // jontewks buildpack (parfois)
-    process.env.GOOGLE_CHROME_BIN,          // heroku-buildpack-google-chrome
-    '/app/.apt/usr/bin/google-chrome',      // chemin classique Heroku apt
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser'
+function resolveChromePath(): string | undefined {
+  // On collecte TOUTES les variables d'env potentiellement posées par les buildpacks
+  const envKeys = Object.keys(process.env).filter(k =>
+    /(chrome|chromium).*(bin|path)/i.test(k)
+  );
+
+  // candidates explicites d'env
+  const envCandidates = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    process.env.GOOGLE_CHROME_FOR_TESTING_BIN, // heroku-buildpack-chrome-for-testing
+    process.env.GOOGLE_CHROME_FOR_TESTING_PATH,
+    process.env.GOOGLE_CHROME_BIN,             // anciens buildpacks
+    process.env.CHROME_PATH,
+    process.env.CHROME_BIN,
   ].filter(Boolean) as string[];
 
-  for (const p of cands) {
+  // chemins “classiques” sur Heroku/Linux
+  const staticCandidates = [
+    '/app/.apt/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    // quelques emplacements CfT usuels
+    '/app/.cache/chrome-for-testing/chrome-linux64/chrome',
+    '/app/.chrome-for-testing/chrome-linux64/chrome',
+  ];
+
+  const candidates = [...envCandidates, ...staticCandidates];
+
+  // debug utile
+  try {
+    logger.info(`Chrome env keys: ${envKeys.map(k => `${k}=${process.env[k]}`).join(' | ')}`);
+    logger.info(`Chrome path candidates: ${candidates.join(' , ')}`);
+  } catch {}
+
+  for (const p of candidates) {
     try {
-      if (fs.existsSync(p)) return p;
+      if (p && fs.existsSync(p)) return p;
     } catch {}
   }
   return undefined;
-};
+}
 
-export async function generatePDFReport(preparationData: any, isPremium: boolean = false): Promise<Buffer> {
+export async function generatePDFReport(preparationData: any, isPremium = false): Promise<Buffer> {
   let browser;
   try {
     const templatePath = path.join(__dirname, '../templates/report-template.html');
     const templateHtml = fs.readFileSync(templatePath, 'utf8');
     const template = handlebars.compile(templateHtml);
 
-    const templateData = {
+    const html = template({
       ...preparationData,
       isPremium,
       generatedAt: new Date().toLocaleDateString(),
       watermark: !isPremium,
-      hasData: (data: any) => data && Object.keys(data).length > 0,
-      formatArray: (arr: string[]) => arr?.filter(item => item?.trim()).join(', ') || 'Not specified'
-    };
-
-    const html = template(templateData);
-
+      hasData: (d: any) => d && Object.keys(d).length > 0,
+      formatArray: (arr: string[]) => arr?.filter(i => i?.trim()).join(', ') || 'Not specified',
+    });
 
     const executablePath = resolveChromePath();
-    logger.info(`Puppeteer chrome path: ${executablePath || 'NONE'}`);
-    logger.info(`Env: GOOGLE_CHROME_FOR_TESTING_BIN=${process.env.GOOGLE_CHROME_FOR_TESTING_BIN || ''} GOOGLE_CHROME_BIN=${process.env.GOOGLE_CHROME_BIN || ''}`);
+    logger.info(`Puppeteer resolved chrome path: ${executablePath || 'NONE'}`);
 
     browser = await puppeteer.launch({
       headless: true,
-      ...(executablePath ? { executablePath } : {}), // on ne passe la prop que si on a un chemin
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+      ...(executablePath ? { executablePath } : {}), // très important
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
 
     const page = await browser.newPage();
@@ -61,18 +82,12 @@ export async function generatePDFReport(preparationData: any, isPremium: boolean
       printBackground: true,
       margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' },
       displayHeaderFooter: true,
-      headerTemplate: `
-        <div style="font-size: 10px; width: 100%; text-align: center; color: #666;">
-          <span>InterviewAce - Interview Preparation Report</span>
-        </div>
-      `,
-      footerTemplate: `
-        <div style="font-size: 10px; width: 100%; text-align: center; color: #666; display: flex; justify-content: space-between; padding: 0 15mm;">
-          <span>Generated on ${new Date().toLocaleDateString()}</span>
-          <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
-          ${!isPremium ? '<span style="color: #999;">Generated with InterviewAce Free</span>' : ''}
-        </div>
-      `
+      headerTemplate: `<div style="font-size:10px;width:100%;text-align:center;color:#666;">InterviewAce - Interview Preparation Report</div>`,
+      footerTemplate: `<div style="font-size:10px;width:100%;color:#666;display:flex;justify-content:space-between;padding:0 15mm;">
+        <span>Generated on ${new Date().toLocaleDateString()}</span>
+        <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
+        ${!isPremium ? '<span style="color:#999;">Generated with InterviewAce Free</span>' : ''}
+      </div>`,
     });
 
     logger.info(`PDF generated successfully (${pdfBuffer.length} bytes)`);
