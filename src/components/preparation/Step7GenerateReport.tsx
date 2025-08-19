@@ -21,6 +21,31 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<string | null>(null);
 
+  const buildTitleFromStep1 = (s1: any) => {
+    const jt = s1?.job_title?.trim();
+    const cn = s1?.company_name?.trim();
+    return jt && cn ? `${jt} at ${cn}` : '';
+  };
+
+  const buildPreparationPayload = (p: any) => {
+    const safeTitle =
+      (p?.title && p.title.trim()) ||
+      buildTitleFromStep1(p?.step_1_data) ||
+      'Interview Preparation';
+    const safeId = (typeof p?.id === 'string' && p.id.trim().length > 0) ? p.id : undefined;
+    return {
+      ...(safeId ? { id: safeId } : {}),
+      title: safeTitle,
+      job_url: p?.job_url || '',
+      step_1_data: p?.step_1_data || {},
+      step_2_data: p?.step_2_data || {},
+      step_3_data: p?.step_3_data || {},
+      step_4_data: p?.step_4_data || {},
+      step_5_data: p?.step_5_data || {},
+      step_6_data: p?.step_6_data || {},
+    };
+  };
+
   const handleGenerateReport = async () => {
     if (!preparation) {
       alert('Preparation not loaded.');
@@ -55,12 +80,17 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
             step_5_data: preparation.step_5_data,
             step_6_data: preparation.step_6_data,
           }
+          preparationData: buildPreparationPayload(preparation)
         }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || errorData.error || 'Failed to generate PDF');
+         const raw = await response.text();
+         let detail: any = null;
+         try { detail = JSON.parse(raw); } catch {}
+         console.error('PDF generate error payload:', detail || raw);
+         const msg = (detail && (detail.message || detail.error)) || 'Validation failed';
+         throw new Error(msg);
       }
 
       if (profile?.is_premium) {

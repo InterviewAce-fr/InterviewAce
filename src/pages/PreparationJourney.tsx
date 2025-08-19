@@ -130,9 +130,15 @@ const PreparationJourney: React.FC = () => {
     if (!preparation) return;
     if (preparation.id) return preparation.id;
 
+    const derived = buildTitleFromStep1(preparation.step_1_data);
+    const safeTitle =
+      (preparation.title && preparation.title.trim()) ||
+      derived ||
+      'Interview Preparation';
+
     try {
       const payload = {
-        title: preparation.title ?? '',
+        title: safeTitle,
         job_url: preparation.job_url ?? '',
         is_complete: false,
         user_id: user!.id,
@@ -168,6 +174,17 @@ const PreparationJourney: React.FC = () => {
       if (!prepId) return;
 
       const stepKey = `step_${stepNumber}_data`;
+
+      // si on sauvegarde l'étape 1, mettre à jour la colonne title
+      const extra: Record<string, any> = {};
+      if (stepNumber === 1) {
+        const derived = buildTitleFromStep1(data);
+        if (derived) {
+          extra.title = derived;
+        }
+      }
+
+
       const { error } = await supabase
         .from('preparations')
         .update({
@@ -191,11 +208,21 @@ const PreparationJourney: React.FC = () => {
     const stepKey = `step_${stepNumber}_data` as keyof Preparation;
     setPreparation(prev => {
       if (!prev) return prev as any;
-      return {
+
+      const next: Preparation = {
         ...prev,
         [stepKey]: data,
         updated_at: new Date().toISOString(),
       } as Preparation;
+
+      if (stepNumber === 1) {
+        const derived = buildTitleFromStep1(data);
+        if (derived && derived !== prev.title) {
+          next.title = derived;
+        }
+      }
+
+      return next;
     });
 
     // 2) mémorise la dernière édition
