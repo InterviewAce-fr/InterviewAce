@@ -159,6 +159,11 @@ export type MatchProfileInput = {
 };
 
 export type MatchResult = {
+  targetType: 'requirement' | 'responsibility';
+  targetIndex: number; // index in the corresponding list
+  targetText: string;
+
+  // scoring payload
   skill: string;
   grade: 'High' | 'Moderate' | 'Low';
   score: number;          // 0..100
@@ -174,16 +179,38 @@ export type MatchingResults = {
 export async function matchProfile(input: MatchProfileInput): Promise<MatchingResults> {
   // Prompt EN
   const system = `You are an expert talent screener.
-Compare a candidate profile against a job description and output STRICT JSON only (no extra text). 
-Scoring rules:
-- For each key requirement, match against (education + experience + skills).
-- For each key responsibility, match against (experience + skills).
-- Score: 0–100 (100 = perfect fit).
-- Grade: High (>=75), Moderate (50–74), Low (<50).
-- Provide a concise, factual reasoning (1–2 sentences).
-- Compute overallScore as a weighted average: requirements 60%, responsibilities 40%.
-Return exactly this JSON shape:
-{"overallScore":0,"matches":[{"skill":"","grade":"High|Moderate|Low","score":0,"reasoning":""}], "distribution":{"high":0,"moderate":0,"low":0}}`;
+  Compare a candidate profile against a job description and output STRICT JSON only (no extra text). 
+
+  Matching rules:
+  - For each key requirement, match it against (education + experience + skills) and produce ONE best match entry with a score.
+  - For each key responsibility, match it against (experience + skills) and produce ONE best match entry with a score.
+  - Each match MUST identify its target using:
+    - "targetType": "requirement" | "responsibility"
+    - "targetIndex": integer index within the provided array for that target type
+    - "targetText": the exact text of the target at that index
+
+  Scoring rules:
+  - Score: 0–100 (100 = perfect fit).
+  - Grade: High (>=75), Moderate (50–74), Low (<50).
+  - Provide a concise, factual reasoning (1–2 sentences).
+  - Compute overallScore as a weighted average: requirements 60%, responsibilities 40%.
+
+  Return EXACTLY this JSON shape:
+  {
+    "overallScore": 0,
+    "matches": [
+      {
+        "targetType":"requirement|responsibility",
+        "targetIndex": 0,
+        "targetText": "",
+        "skill": "",
+        "grade": "High|Moderate|Low",
+        "score": 0,
+        "reasoning": ""
+      }
+    ],
+    "distribution": { "high":0, "moderate":0, "low":0 }
+  }`;
 
   const userPayload = {
     instructions: {

@@ -63,6 +63,10 @@ export interface BusinessModelData {
 export interface MatchingResultsFront {
   overallScore: number;
   matches: Array<{
+    targetType: 'requirement' | 'responsibility';
+    targetIndex: number;
+    targetText: string;
+
     skill: string;
     grade: 'High' | 'Moderate' | 'Low';
     score: number;
@@ -191,7 +195,7 @@ class AIService {
     };
   }
 
-  // ✅ nouvelle méthode front pour le matching Step 4
+  // Step 4 — matching avec ancrage par ligne (targetType/targetIndex/targetText)
   async matchProfile(payload: {
     requirements: string[];
     responsibilities: string[];
@@ -209,6 +213,12 @@ class AIService {
     if (!r.ok) throw new Error(d?.error || 'Match API error');
 
     const matches = Array.isArray(d.matches) ? d.matches.map((m: any) => ({
+      // ✅ champs d’ancrage renvoyés par le backend
+      targetType: (m?.targetType === 'responsibility' ? 'responsibility' : 'requirement') as 'requirement' | 'responsibility',
+      targetIndex: Number.isFinite(Number(m?.targetIndex)) ? Number(m?.targetIndex) : 0,
+      targetText: String(m?.targetText ?? ''),
+
+      // scoring
       skill: String(m?.skill ?? '—'),
       grade: ((): 'High' | 'Moderate' | 'Low' => {
         const g = String(m?.grade ?? '').toLowerCase();

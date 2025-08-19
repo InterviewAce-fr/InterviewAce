@@ -15,15 +15,17 @@ const PayloadSchema = z.object({
 router.post("/match-profile", async (req, res) => {
   try {
     const payload = PayloadSchema.parse(req.body);
-
     const result = await matchProfile(payload);
 
-    // Normalise/valide le format attendu par l’UI
     const normalized = {
       overallScore: Math.max(0, Math.min(100, Math.round(result.overallScore ?? 0))),
       matches: Array.isArray(result.matches)
         ? result.matches.map((m: any) => ({
-            skill: String(m.skill ?? m.source ?? m.target ?? "—"),
+            targetType: m.targetType === 'responsibility' ? 'responsibility' : 'requirement',
+            targetIndex: Number.isFinite(Number(m.targetIndex)) ? Number(m.targetIndex) : 0,
+            targetText: String(m.targetText ?? ''),
+
+            skill: String(m.skill ?? '—'),
             grade: ((): "High" | "Moderate" | "Low" => {
               const g = String(m.grade ?? "").toLowerCase();
               if (g.startsWith("high")) return "High";
@@ -38,7 +40,7 @@ router.post("/match-profile", async (req, res) => {
             reasoning: String(m.reasoning ?? ""),
           }))
         : [],
-      distribution: ((): { high: number; moderate: number; low: number } => {
+      distribution: (() => {
         const dist = { high: 0, moderate: 0, low: 0 };
         for (const m of (Array.isArray(result.matches) ? result.matches : [])) {
           const s = Number(m.score ?? 0);
@@ -49,9 +51,6 @@ router.post("/match-profile", async (req, res) => {
         return dist;
       })(),
     };
-
-    // Optionnel : désactiver tout cache
-    // res.set("Cache-Control", "no-store");
 
     res.json(normalized);
   } catch (err: any) {

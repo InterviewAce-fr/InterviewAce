@@ -28,7 +28,6 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
   };
 
   const buildPreparationPayload = (p: any) => {
-
     const derived = buildTitleFromStep1(p?.step_1_data);
 
     const safeTitle =
@@ -78,12 +77,12 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
       });
 
       if (!response.ok) {
-         const raw = await response.text();
-         let detail: any = null;
-         try { detail = JSON.parse(raw); } catch {}
-         console.error('PDF generate error payload:', detail || raw);
-         const msg = (detail && (detail.message || detail.error)) || 'Validation failed';
-         throw new Error(msg);
+        const raw = await response.text();
+        let detail: any = null;
+        try { detail = JSON.parse(raw); } catch {}
+        console.error('PDF generate error payload:', detail || raw);
+        const msg = (detail && (detail.message || detail.error)) || 'Validation failed';
+        throw new Error(msg);
       }
 
       if (profile?.is_premium) {
@@ -132,7 +131,7 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
         {loading ? 'Generating...' : 'Generate PDF Report'}
       </button>
 
-      {profile?.is_premium && jobId && ( 
+      {profile?.is_premium && jobId && (
         <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-800">
           <Crown className="w-5 h-5 inline mr-2" />
           <p className="font-medium">Report generation queued (Job ID: {jobId}).</p>
