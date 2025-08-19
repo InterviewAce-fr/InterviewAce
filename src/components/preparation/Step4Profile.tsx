@@ -1,51 +1,43 @@
 import React, { useMemo, useState } from 'react';
-import { Building, ClipboardList, CheckSquare, User, Flame, Circle, RefreshCw } from 'lucide-react';
-import { aiService, type MatchingResultsFront } from '@/services/aiService';
+import { Building, ClipboardList, CheckSquare, RefreshCw, Flame, Circle } from 'lucide-react';
+import { aiService, type MatchingResultsFront } from '@/lib/aiService'; // ⬅️ corrige le chemin
 
-interface MatchResult {
+type MatchResult = {
   targetType: 'requirement' | 'responsibility';
   targetIndex: number;
   targetText: string;
-
   skill: string;
   grade: 'High' | 'Moderate' | 'Low';
   score: number;
   reasoning: string;
-}
+};
 
-interface MatchingResults {
+type MatchingResults = {
   overallScore: number;
   matches: MatchResult[];
-  distribution: {
-    high: number;
-    moderate: number;
-    low: number;
-  };
-}
+  distribution: { high: number; moderate: number; low: number };
+};
 
-interface Step4Data {
-  // Conservés pour compat éventuelle
+type Step4Data = {
   candidateProfile?: string;
-  keyResponsibilities?: string[]; // (non utilisés ici)
-  keySkills?: string[];
+  keyResponsibilities?: string[];
+  keySkills?: string[];     // ⬅️ on s’appuie dessus
   education?: string[];
   experience?: string[];
   cvText?: string;
   matchingResults?: MatchingResults;
-
-  // ✨ Nouveaux champs UX
   requirementResponses?: string[];
   responsibilityResponses?: string[];
-}
+};
 
-interface Step4Props {
+type Step4Props = {
   data: Step4Data;
   onUpdate: (data: Step4Data) => void;
   jobData?: {
     keyRequirements?: string[];
     keyResponsibilities?: string[];
   };
-}
+};
 
 const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
   const [loading, setLoading] = useState(false);
@@ -54,10 +46,10 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
   const requirements = jobData?.keyRequirements ?? [];
   const responsibilities = jobData?.keyResponsibilities ?? [];
 
-  // score global (si déjà présent)
-  const score = typeof data.matchingResults?.overallScore === 'number'
-    ? Math.round(data.matchingResults.overallScore)
-    : null;
+  const score =
+    typeof data.matchingResults?.overallScore === 'number'
+      ? Math.round(data.matchingResults.overallScore)
+      : null;
 
   const getScoreColor = (s: number | null) => {
     if (s === null) return 'text-gray-600 border-gray-300';
@@ -73,19 +65,22 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
     return 'bg-green-50';
   };
 
-  const getMatchIcon = (score: number) => {
-    if (score >= 90) return <Flame className="w-5 h-5 text-red-500" title="Excellent match" />;
-    if (score >= 75) return <Circle className="w-5 h-5 text-green-500" title="Good match" />;
-    if (score >= 50) return <Circle className="w-5 h-5 text-orange-500" title="Moderate match" />;
-    return <Circle className="w-5 h-5 text-red-500" title="Weak match" />;
+  const getMatchIcon = (v: number) => {
+    if (v >= 90) return <Flame className="w-5 h-5" title="Excellent match" />;
+    if (v >= 75) return <Circle className="w-5 h-5" title="Good match" />;
+    if (v >= 50) return <Circle className="w-5 h-5" title="Moderate match" />;
+    return <Circle className="w-5 h-5" title="Weak match" />;
   };
 
-  // Bouton activable si on a de quoi matcher
+  // ✅ active si on a des données poste + CV
   const canGenerate = useMemo(() => {
     const hasJob = (requirements.length + responsibilities.length) > 0;
-    const hasCV = (data.skills?.length ?? 0) + (data.education?.length ?? 0) + (data.experience?.length ?? 0) > 0;
+    const hasCV =
+      (data.keySkills?.length ?? 0) +
+      (data.education?.length ?? 0) +
+      (data.experience?.length ?? 0) > 0;
     return hasJob && hasCV && !loading;
-  }, [requirements.length, responsibilities.length, data.skills, data.education, data.experience, loading]);
+  }, [requirements.length, responsibilities.length, data.keySkills, data.education, data.experience, loading]);
 
   const handleGenerate = async () => {
     setErr(null);
@@ -96,7 +91,7 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
         responsibilities,
         education: data.education ?? [],
         experience: data.experience ?? [],
-        skills: data.keySkills ?? data['skills' as any] ?? [], // fallback if you later store skills elsewhere
+        skills: data.keySkills ?? [], // ⬅️ utilise keySkills
       };
 
       const res: MatchingResultsFront = await aiService.matchProfile(payload);
@@ -116,14 +111,13 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header + bouton Generate */}
       <div className="flex items-start justify-between gap-4">
         <div className="text-left">
           <h2 className="text-2xl font-bold text-gray-900">Your Profile & Experience</h2>
           <p className="text-gray-600">Alignez vos atouts sur les attentes du poste.</p>
         </div>
 
-        {/* Toolbar */}
         <div className="flex items-center gap-2">
           {err && (
             <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">
@@ -145,7 +139,7 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
         </div>
       </div>
 
-      {/* Global Scoring */}
+      {/* Score global */}
       <div className="flex justify-center">
         <div
           className={`flex items-center justify-center w-28 h-28 rounded-full border-4 ${getScoreColor(score)} ${getScoreBg(score)}`}
@@ -163,7 +157,7 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
 
       {/* Deux colonnes : Requirements / Responsibilities */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Colonne gauche : Key Requirements */}
+        {/* Requirements */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
           <h3 className="text-xl font-semibold text-blue-900 mb-6 flex items-center">
             <Building className="h-6 w-6 mr-2" />
@@ -171,20 +165,17 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
           </h3>
 
           {requirements.length === 0 ? (
-            <p className="text-blue-600 text-sm italic">
-              Complete Step 1 Job Analysis to see requirements
-            </p>
+            <p className="text-blue-600 text-sm italic">Complete Step 1 Job Analysis to see requirements</p>
           ) : (
             <div className="space-y-4">
               {requirements.map((req, idx) => (
                 <div key={idx} className="bg-white rounded-lg border border-blue-200 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-gray-800 text-sm">{req}</div>
-                    {/* (Option future) si tu ajoutes target côté backend, mets l’icône ici */}
                   </div>
                   <div className="mt-3">
                     <textarea
-                      value={(data.requirementResponses?.[idx] ?? '')}
+                      value={data.requirementResponses?.[idx] ?? ''}
                       onChange={(e) => {
                         const base = data.requirementResponses ?? [];
                         const next = [...base];
@@ -206,7 +197,7 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
           )}
         </div>
 
-        {/* Colonne droite : Key Responsibilities */}
+        {/* Responsibilities */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
           <h3 className="text-xl font-semibold text-blue-900 mb-6 flex items-center">
             <ClipboardList className="h-6 w-6 mr-2" />
@@ -214,20 +205,17 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
           </h3>
 
           {responsibilities.length === 0 ? (
-            <p className="text-blue-600 text-sm italic">
-              Complete Step 1 Job Analysis to see responsibilities
-            </p>
+            <p className="text-blue-600 text-sm italic">Complete Step 1 Job Analysis to see responsibilities</p>
           ) : (
             <div className="space-y-4">
               {responsibilities.map((res, idx) => (
                 <div key={idx} className="bg-white rounded-lg border border-blue-200 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-gray-800 text-sm">{res}</div>
-                    {/* (Option future) si tu ajoutes target côté backend, mets l’icône ici */}
                   </div>
                   <div className="mt-3">
                     <textarea
-                      value={(data.responsibilityResponses?.[idx] ?? '')}
+                      value={data.responsibilityResponses?.[idx] ?? ''}
                       onChange={(e) => {
                         const base = data.responsibilityResponses ?? [];
                         const next = [...base];
@@ -238,7 +226,7 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
                         next[idx] = e.target.value;
                         onUpdate({ ...data, responsibilityResponses: next });
                       }}
-                      placeholder="Donnez un exemple ou un résultat mesurable qui prouve que vous pouvez assumer cette responsabilité…"
+                      placeholder="Donnez un exemple mesurable qui prouve que vous pouvez assumer cette responsabilité…"
                       rows={3}
                       className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                     />
@@ -292,9 +280,7 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
                       </span>
                     </div>
                   </div>
-                  {m.reasoning && (
-                    <p className="mt-1 text-sm text-gray-700">{m.reasoning}</p>
-                  )}
+                  {m.reasoning && <p className="mt-1 text-sm text-gray-700">{m.reasoning}</p>}
                 </div>
               </li>
             ))}
@@ -302,10 +288,9 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
         )}
       </div>
 
-      {/* Hint si Generate est désactivé */}
       {!canGenerate && (
         <div className="text-xs text-gray-500">
-          Astuce : assurez-vous d’avoir des <span className="font-medium">requirements/responsibilities</span> (Step 1)
+          Astuce : assurez‑vous d’avoir des <span className="font-medium">requirements/responsibilities</span> (Step 1)
           et des <span className="font-medium">skills/education/experience</span> (CV) pour activer le bouton Generate.
         </div>
       )}
