@@ -69,17 +69,6 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          preparationData: {
-            id: preparation.id,
-            title: preparation.title,
-            job_url: preparation.job_url,
-            step_1_data: preparation.step_1_data,
-            step_2_data: preparation.step_2_data,
-            step_3_data: preparation.step_3_data,
-            step_4_data: preparation.step_4_data,
-            step_5_data: preparation.step_5_data,
-            step_6_data: preparation.step_6_data,
-          }
           preparationData: buildPreparationPayload(preparation)
         }),
       });
