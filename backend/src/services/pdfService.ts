@@ -44,8 +44,8 @@ export async function generatePDFReport(preparationData: any, isPremium: boolean
 
 
     const executablePath = resolveChromePath();
-    logger.info(`Puppeteer chrome path resolved to: ${executablePath || 'NONE'}`);
-    logger.info(`Env check: PUPPETEER_EXECUTABLE_PATH=${process.env.PUPPETEER_EXECUTABLE_PATH || ''}, GOOGLE_CHROME_BIN=${process.env.GOOGLE_CHROME_BIN || ''}`);
+    logger.info(`Puppeteer chrome path: ${executablePath || 'NONE'}`);
+    logger.info(`Env: GOOGLE_CHROME_FOR_TESTING_BIN=${process.env.GOOGLE_CHROME_FOR_TESTING_BIN || ''} GOOGLE_CHROME_BIN=${process.env.GOOGLE_CHROME_BIN || ''}`);
 
     browser = await puppeteer.launch({
       headless: true,
