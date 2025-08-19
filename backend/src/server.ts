@@ -20,6 +20,7 @@ import scrapeRoutes from './routes/scrape';
 import aiRoutes from './routes/job';
 import swotRoutes from './routes/swot';
 import businessModelRoutes from './routes/businessModel';
+import matchProfileRouter from "./routes/matchProfile";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -107,6 +108,7 @@ app.use('/api/scrape', scrapeRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/ai', swotRoutes);
 app.use('/api/ai', businessModelRoutes);
+app.use('/api/ai', matchProfileRouter);
 
 // 404 handler
 app.use('*', (req, res) => {

@@ -36,7 +36,7 @@ export interface SWOTResult {
   threats: string[];
 }
 
-const BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, ''); // retire le / final
+const BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 const api = (p: string) => `${BASE}${p.startsWith('/') ? '' : '/'}${p}`;
 
 async function authHeaders() {
@@ -60,10 +60,20 @@ export interface BusinessModelData {
   revenueStreams: string[];
 }
 
+export interface MatchingResultsFront {
+  overallScore: number;
+  matches: Array<{
+    skill: string;
+    grade: 'High' | 'Moderate' | 'Low';
+    score: number;
+    reasoning: string;
+  }>;
+  distribution: { high: number; moderate: number; low: number };
+}
+
 class AIService {
 
   async analyzeJobFromUrl(_url: string): Promise<JobAnalysisResult> {
-    // LinkedIn bloque le scraping. On garde l’API “url” mais on guide l’utilisateur.
     throw new Error(
       'L’analyse par URL est désactivée (LinkedIn bloque le scraping). Colle la description complète de l’offre.'
     );
@@ -78,7 +88,6 @@ class AIService {
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d?.error || 'Failed to analyze job text');
-    // Normalisation pour correspondre exactement aux types du front
     return {
       company_name: d.company_name || 'Unknown Company',
       job_title: d.job_title || 'Unknown Position',
@@ -138,7 +147,7 @@ class AIService {
 
   async generateSWOT(input: {
     company_name?: string;
-    existing?: SWOTResult; // contenu déjà saisi côté UI (optionnel)
+    existing?: SWOTResult;
   }): Promise<SWOTResult> {
     const headers = await authHeaders();
     const r = await fetch(api(`/ai/swot`), {
@@ -182,6 +191,55 @@ class AIService {
     };
   }
 
+  // ✅ nouvelle méthode front pour le matching Step 4
+  async matchProfile(payload: {
+    requirements: string[];
+    responsibilities: string[];
+    education: string[];
+    experience: string[];
+    skills: string[];
+  }): Promise<MatchingResultsFront> {
+    const headers = await authHeaders();
+    const r = await fetch(api('/ai/match-profile'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d?.error || 'Match API error');
+
+    const matches = Array.isArray(d.matches) ? d.matches.map((m: any) => ({
+      skill: String(m?.skill ?? '—'),
+      grade: ((): 'High' | 'Moderate' | 'Low' => {
+        const g = String(m?.grade ?? '').toLowerCase();
+        if (g.startsWith('high')) return 'High';
+        if (g.startsWith('moder')) return 'Moderate';
+        if (g.startsWith('low')) return 'Low';
+        const s = Number(m?.score ?? 0);
+        if (s >= 75) return 'High';
+        if (s >= 50) return 'Moderate';
+        return 'Low';
+      })(),
+      score: Math.max(0, Math.min(100, Math.round(Number(m?.score ?? 0)))),
+      reasoning: String(m?.reasoning ?? ''),
+    })) : [];
+
+    const distribution = matches.reduce(
+      (acc, m) => {
+        if (m.score >= 75) acc.high++;
+        else if (m.score >= 50) acc.moderate++;
+        else acc.low++;
+        return acc;
+      },
+      { high: 0, moderate: 0, low: 0 }
+    );
+
+    return {
+      overallScore: typeof d.overallScore === 'number' ? d.overallScore : 0,
+      matches,
+      distribution,
+    };
+  }
 }
 
 export const aiService = new AIService();
