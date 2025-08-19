@@ -32,6 +32,7 @@ export async function generatePDFReport(preparationData: any, isPremium: boolean
     // Launch Puppeteer
     browser = await puppeteer.launch({
       headless: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
