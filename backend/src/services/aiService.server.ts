@@ -233,14 +233,23 @@ export async function matchProfile(input: MatchProfileInput): Promise<MatchingRe
 
   const raw = completion.choices?.[0]?.message?.content ?? '{}';
   let parsed: any = {};
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    parsed = {};
-  }
+  try { parsed = JSON.parse(raw); } catch { parsed = {}; }
 
   const matchesRaw = Array.isArray(parsed.matches) ? parsed.matches : [];
+
   const matches: MatchResult[] = matchesRaw.map((m: any): MatchResult => {
+    // sanitize target fields
+    const tType = String(m?.targetType ?? '').toLowerCase();
+    const targetType: 'requirement' | 'responsibility' =
+      tType === 'responsibility' ? 'responsibility' : 'requirement';
+
+    const targetIndex = Number.isFinite(Number(m?.targetIndex))
+      ? Math.max(0, Math.round(Number(m.targetIndex)))
+      : 0;
+
+    const targetText = String(m?.targetText ?? '');
+
+    // scoring
     const score = clamp(toInt(m?.score ?? 0));
     const gradeFromScore = score >= 75 ? 'High' : score >= 50 ? 'Moderate' : 'Low';
     let grade = String(m?.grade ?? '').toLowerCase();
@@ -250,6 +259,9 @@ export async function matchProfile(input: MatchProfileInput): Promise<MatchingRe
     else grade = gradeFromScore;
 
     return {
+      targetType,
+      targetIndex,
+      targetText,
       skill: String(m?.skill ?? m?.source ?? m?.target ?? '—'),
       grade: grade as MatchResult['grade'],
       score,
@@ -257,6 +269,7 @@ export async function matchProfile(input: MatchProfileInput): Promise<MatchingRe
     };
   });
 
+  // Distribution recomputed server-side (defensive)
   const distribution = matches.reduce(
     (acc, m) => {
       if (m.score >= 75) acc.high += 1;
