@@ -4,6 +4,26 @@ import fs from 'fs';
 import path from 'path';
 import { logger } from '../utils/logger';
 
+
+const resolveChromePath = () => {
+  const cands = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,  // jontewks buildpack (parfois)
+    process.env.GOOGLE_CHROME_BIN,          // heroku-buildpack-google-chrome
+    '/app/.apt/usr/bin/google-chrome',      // chemin classique Heroku apt
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser'
+  ].filter(Boolean) as string[];
+
+  for (const p of cands) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {}
+  }
+  return undefined;
+};
+
 export async function generatePDFReport(preparationData: any, isPremium: boolean = false): Promise<Buffer> {
   let browser;
   try {
@@ -23,19 +43,14 @@ export async function generatePDFReport(preparationData: any, isPremium: boolean
     const html = template(templateData);
 
 
-    const executablePath =
-      process.env.PUPPETEER_EXECUTABLE_PATH || // jontewks/puppeteer-heroku-buildpack
-      process.env.GOOGLE_CHROME_BIN ||         // heroku-buildpack-google-chrome
-      undefined;                               // local/dev
+    const executablePath = resolveChromePath();
+    logger.info(`Puppeteer chrome path resolved to: ${executablePath || 'NONE'}`);
+    logger.info(`Env check: PUPPETEER_EXECUTABLE_PATH=${process.env.PUPPETEER_EXECUTABLE_PATH || ''}, GOOGLE_CHROME_BIN=${process.env.GOOGLE_CHROME_BIN || ''}`);
 
     browser = await puppeteer.launch({
       headless: true,
-      executablePath,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage'
-      ]
+      ...(executablePath ? { executablePath } : {}), // on ne passe la prop que si on a un chemin
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     });
 
     const page = await browser.newPage();
