@@ -37,6 +37,7 @@ const PreparationJourney: React.FC = () => {
   const [preparation, setPreparation] = useState<Preparation | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [resumeCv, setResumeCv] = useState<{skills: string[]; education: string[]; experience: string[]} | null>(null);
 
   const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastEditedRef = React.useRef<{ step: number; data: any } | null>(null);
@@ -78,6 +79,54 @@ const PreparationJourney: React.FC = () => {
     fetchPreparation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, user]);
+
+  // Fetch active resume
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchActiveResume = async () => {
+      const { data, error } = await supabase
+        .from('resume_profiles')
+        .select('skills, education, experience')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .single();
+
+      if (!error && data) {
+        setResumeCv({
+          skills: data.skills ?? [],
+          education: data.education ?? [],
+          experience: data.experience ?? [],
+        });
+      } else {
+        setResumeCv({ skills: [], education: [], experience: [] }); // fallback
+      }
+    };
+
+    fetchActiveResume();
+  }, [user]);
+
+  // Make resumeCV data always available in Step4
+  useEffect(() => {
+    if (!resumeCv) return;
+    if (currentStep !== 4) return;
+
+    const s4 = (preparation as any).step_4_data || {};
+    const isEmpty =
+      !(s4.keySkills?.length) &&
+      !(s4.education?.length) &&
+      !(s4.experience?.length);
+
+    if (isEmpty) {
+      updateStepData(4, {
+        ...s4,
+        keySkills: resumeCv.skills,
+        education: resumeCv.education,
+        experience: resumeCv.experience,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeCv, currentStep]);
 
   // Best-effort flush on tab hide / page unload
   useEffect(() => {
@@ -389,14 +438,7 @@ const PreparationJourney: React.FC = () => {
           <CurrentStepComponent
             data={currentStepData}
             onUpdate={(data: any) => updateStepData(currentStep, data)}
-            cvData={
-              profile?.cv_parsed // si tu as un objet structuré
-              || {
-                skills: profile?.skills ?? [],
-                education: profile?.education ?? [],
-                experience: profile?.experience ?? [],
-              }
-            }
+            cvData={resumeCv ?? { skills: [], education: [], experience: [] }}
             jobData={(preparation as any).step_1_data}
             swotData={(preparation as any).step_3_data}
             matchingResults={(preparation as any).step_4_data?.matchingResults}
