@@ -1,21 +1,32 @@
-import React, { useState } from 'react';
-import { HelpCircle, MessageSquare, Brain, Code, Users, Building, TrendingUp, Heart } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { HelpCircle, MessageSquare, Brain, Code, Users, Building, TrendingUp, Heart, Tag } from 'lucide-react';
+
+interface QAItem {
+  question: string;
+  answer: string;
+}
+
+interface AskItem {
+  question: string;
+  reason: string;
+}
 
 interface Step6QuestionsProps {
   data: {
-    behavioral_questions?: Array<{ question: string; answer: string; }>;
-    technical_questions?: Array<{ question: string; answer: string; }>;
-    situational_questions?: Array<{ question: string; answer: string; }>;
-    company_questions?: Array<{ question: string; answer: string; }>;
-    career_questions?: Array<{ question: string; answer: string; }>;
-    personal_questions?: Array<{ question: string; answer: string; }>;
-    questions_to_ask?: Array<{ question: string; reason: string; }>;
+    behavioral_questions?: QAItem[];
+    technical_questions?: QAItem[];
+    situational_questions?: QAItem[];
+    company_questions?: QAItem[];
+    career_questions?: QAItem[];
+    personal_questions?: QAItem[];
+    questions_to_ask?: AskItem[];
   };
   onUpdate: (data: any) => void;
 }
 
 const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
-  const [activeTab, setActiveTab] = useState('behavioral');
+  const [activeTab, setActiveTab] = useState<'behavioral' | 'technical' | 'situational' | 'company' | 'career' | 'personal'>('behavioral');
+
   const [formData, setFormData] = useState({
     behavioral_questions: data.behavioral_questions || [],
     technical_questions: data.technical_questions || [],
@@ -26,42 +37,7 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
     questions_to_ask: data.questions_to_ask || []
   });
 
-  const addQuestion = (category: keyof typeof formData) => {
-    const newQuestion = category === 'questions_to_ask' 
-      ? { question: '', reason: '' }
-      : { question: '', answer: '' };
-    
-    const updatedQuestions = [...formData[category], newQuestion];
-    const updatedData = { ...formData, [category]: updatedQuestions };
-    setFormData(updatedData);
-    onUpdate(updatedData);
-  };
-
-  const updateQuestion = (category: keyof typeof formData, index: number, field: string, value: string) => {
-    const updatedQuestions = [...formData[category]];
-    updatedQuestions[index] = { ...updatedQuestions[index], [field]: value };
-    const updatedData = { ...formData, [category]: updatedQuestions };
-    setFormData(updatedData);
-    onUpdate(updatedData);
-  };
-
-  const removeQuestion = (category: keyof typeof formData, index: number) => {
-    const updatedQuestions = formData[category].filter((_, i) => i !== index);
-    const updatedData = { ...formData, [category]: updatedQuestions };
-    setFormData(updatedData);
-    onUpdate(updatedData);
-  };
-
-  const addSuggestedQuestion = (question: string) => {
-    const category = activeTab + '_questions' as keyof typeof formData;
-    if (category !== 'questions_to_ask') {
-      const updatedQuestions = [...formData[category], { question, answer: '' }];
-      const updatedData = { ...formData, [category]: updatedQuestions };
-      setFormData(updatedData);
-      onUpdate(updatedData);
-    }
-  };
-
+  // --- Suggestions catalog ---------------------------------------------------
   const questionCategories = [
     {
       key: 'behavioral',
@@ -70,12 +46,12 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
       color: 'blue',
       description: 'Questions about past experiences and how you handled situations',
       examples: [
-        "Tell me about a time when you had to work under pressure",
-        "Describe a situation where you had to resolve a conflict",
-        "Give an example of when you showed leadership",
-        "Tell me about a mistake you made and how you handled it",
-        "Describe a time when you had to adapt to change",
-        "Give an example of when you went above and beyond"
+        'Tell me about a time when you had to work under pressure',
+        'Describe a situation where you had to resolve a conflict',
+        'Give an example of when you showed leadership',
+        'Tell me about a mistake you made and how you handled it',
+        'Describe a time when you had to adapt to change',
+        'Give an example of when you went above and beyond'
       ]
     },
     {
@@ -85,11 +61,11 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
       color: 'green',
       description: 'Questions about your technical skills and knowledge',
       examples: [
-        "How would you approach solving [specific technical problem]?",
-        "What technologies have you worked with recently?",
-        "Explain a complex technical concept in simple terms",
-        "How do you stay updated with new technologies?",
-        "Describe your development process",
+        'How would you approach solving [specific technical problem]?',
+        'What technologies have you worked with recently?',
+        'Explain a complex technical concept in simple terms',
+        'How do you stay updated with new technologies?',
+        'Describe your development process',
         "What's your experience with [specific technology]?"
       ]
     },
@@ -100,12 +76,12 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
       color: 'purple',
       description: 'Hypothetical scenarios to assess problem-solving skills',
       examples: [
-        "How would you handle a difficult client?",
-        "What would you do if you disagreed with your manager?",
-        "How would you prioritize competing deadlines?",
-        "How would you handle a team member not pulling their weight?",
-        "What would you do if you discovered a major bug in production?",
-        "How would you approach a project with unclear requirements?"
+        'How would you handle a difficult client?',
+        'What would you do if you disagreed with your manager?',
+        'How would you prioritize competing deadlines?',
+        'How would you handle a team member not pulling their weight?',
+        'What would you do if you discovered a major bug in production?',
+        'How would you approach a project with unclear requirements?'
       ]
     },
     {
@@ -115,12 +91,12 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
       color: 'yellow',
       description: 'Questions about the company, culture, and industry',
       examples: [
-        "Why do you want to work for our company?",
-        "What do you know about our recent developments?",
-        "How do you see our industry evolving?",
-        "What attracts you to our company culture?",
-        "How would you contribute to our mission?",
-        "What do you know about our competitors?"
+        'Why do you want to work for our company?',
+        'What do you know about our recent developments?',
+        'How do you see our industry evolving?',
+        'What attracts you to our company culture?',
+        'How would you contribute to our mission?',
+        'What do you know about our competitors?'
       ]
     },
     {
@@ -130,12 +106,12 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
       color: 'indigo',
       description: 'Questions about your career aspirations and goals',
       examples: [
-        "Where do you see yourself in 5 years?",
-        "What are your career goals?",
-        "Why are you looking to change roles?",
-        "What motivates you in your career?",
-        "How does this role fit into your career plan?",
-        "What skills do you want to develop?"
+        'Where do you see yourself in 5 years?',
+        'What are your career goals?',
+        'Why are you looking to change roles?',
+        'What motivates you in your career?',
+        'How does this role fit into your career plan?',
+        'What skills do you want to develop?'
       ]
     },
     {
@@ -145,18 +121,113 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
       color: 'pink',
       description: 'Questions about your personality and work style',
       examples: [
-        "What motivates you?",
-        "How do you handle stress?",
-        "What are your strengths and weaknesses?",
-        "How would your colleagues describe you?",
+        'What motivates you?',
+        'How do you handle stress?',
+        'What are your strengths and weaknesses?',
+        'How would your colleagues describe you?',
         "What's your ideal work environment?",
-        "How do you prefer to receive feedback?"
+        'How do you prefer to receive feedback?'
       ]
     }
+  ] as const;
+
+  type CatKey = typeof questionCategories[number]['key'];
+  const catByKey: Record<CatKey, (typeof questionCategories)[number]> = useMemo(() => {
+    return questionCategories.reduce((acc, c) => {
+      // @ts-ignore
+      acc[c.key] = c; return acc;
+    }, {} as any);
+  }, []);
+
+  // --- Track which suggestions are currently selected so we can hide them -----
+  const makeKey = (cat: CatKey, text: string) => `${cat}::${text.trim()}`;
+
+  const seedSelectedSuggestionKeys = (): Set<string> => {
+    const set = new Set<string>();
+    (['behavioral','technical','situational','company','career','personal'] as CatKey[]).forEach((k) => {
+      const examples = catByKey[k].examples;
+      const picked = (formData as any)[`${k}_questions`] as QAItem[];
+      picked?.forEach((item) => {
+        if (examples.includes(item.question)) set.add(makeKey(k, item.question));
+      });
+    });
+    return set;
+  };
+
+  const [selectedSuggestionKeys, setSelectedSuggestionKeys] = useState<Set<string>>(seedSelectedSuggestionKeys);
+
+  useEffect(() => {
+    // If external data prop changes, attempt to sync the suggestion set
+    setSelectedSuggestionKeys(seedSelectedSuggestionKeys());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  // --- CRUD helpers ----------------------------------------------------------
+  const commit = (updated: typeof formData) => {
+    setFormData(updated);
+    onUpdate(updated);
+  };
+
+  const addQuestion = (category: keyof typeof formData) => {
+    const newQuestion = category === 'questions_to_ask' ? { question: '', reason: '' } : { question: '', answer: '' };
+    const updated = { ...formData, [category]: [...formData[category], newQuestion] };
+    commit(updated);
+  };
+
+  const updateQuestion = (category: keyof typeof formData, index: number, field: string, value: string) => {
+    const updatedCat = [...formData[category]] as any[];
+    updatedCat[index] = { ...updatedCat[index], [field]: value };
+    const updated = { ...formData, [category]: updatedCat };
+    commit(updated);
+  };
+
+  const removeQuestion = (category: keyof typeof formData, index: number) => {
+    // If removing a prepared QA (not questions_to_ask), and the text matches a suggestion, unhide the suggestion
+    if (category !== 'questions_to_ask') {
+      const catKey = category.replace('_questions', '') as CatKey;
+      const item = (formData[category] as QAItem[])[index];
+      if (item && catByKey[catKey].examples.includes(item.question)) {
+        const key = makeKey(catKey, item.question);
+        setSelectedSuggestionKeys((prev) => {
+          const next = new Set(prev); next.delete(key); return next;
+        });
+      }
+    }
+
+    const updated = { ...formData, [category]: formData[category].filter((_, i) => i !== index) };
+    commit(updated);
+  };
+
+  const addSuggestedQuestion = (question: string) => {
+    const category = (activeTab + '_questions') as keyof typeof formData;
+    if (category !== 'questions_to_ask') {
+      const updated = { ...formData, [category]: [...(formData[category] as QAItem[]), { question, answer: '' }] };
+      // mark as selected so we hide it from suggestions
+      const key = makeKey(activeTab, question);
+      setSelectedSuggestionKeys((prev) => new Set(prev).add(key));
+      commit(updated);
+    }
+  };
+
+  const suggestedQuestionsToAsk = [
+    'What does success look like in this role after 6 months?',
+    'What are the biggest challenges facing the team right now?',
+    'How would you describe the company culture?',
+    'What opportunities are there for professional development?',
+    'What do you enjoy most about working here?',
+    "How does this role contribute to the company's overall goals?",
+    'What are the next steps in the interview process?',
+    "Can you tell me about the team I'd be working with?"
   ];
 
-  const getColorClasses = (color: string, active: boolean = false) => {
-    const colors = {
+  const addSuggestedQuestionToAsk = (question: string) => {
+    const updated = { ...formData, questions_to_ask: [...formData.questions_to_ask, { question, reason: '' }] };
+    commit(updated);
+  };
+
+  // --- UI helpers ------------------------------------------------------------
+  const getColorClasses = (color: string, active = false) => {
+    const colors: Record<string, string> = {
       blue: active ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100',
       green: active ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100',
       purple: active ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700 hover:bg-purple-100',
@@ -164,52 +235,98 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
       indigo: active ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100',
       pink: active ? 'bg-pink-600 text-white' : 'bg-pink-50 text-pink-700 hover:bg-pink-100'
     };
-    return colors[color as keyof typeof colors] || colors.blue;
+    return colors[color] || colors.blue;
   };
 
-  const getCurrentCategory = () => {
-    return questionCategories.find(cat => cat.key === activeTab) || questionCategories[0];
+  const getCurrentCategory = () => questionCategories.find((c) => c.key === activeTab) ?? questionCategories[0];
+
+  const getPreparedFor = (k: CatKey) => (formData as any)[`${k}_questions`] as QAItem[];
+
+  const filteredSuggestionsForActive = () => {
+    const cat = getCurrentCategory();
+    return cat.examples.filter((ex) => !selectedSuggestionKeys.has(makeKey(cat.key as CatKey, ex)));
   };
 
-  const getCurrentQuestions = () => {
-    const category = activeTab + '_questions' as keyof typeof formData;
-    return formData[category] || [];
-  };
-
-  const suggestedQuestionsToAsk = [
-    "What does success look like in this role after 6 months?",
-    "What are the biggest challenges facing the team right now?",
-    "How would you describe the company culture?",
-    "What opportunities are there for professional development?",
-    "What do you enjoy most about working here?",
-    "How does this role contribute to the company's overall goals?",
-    "What are the next steps in the interview process?",
-    "Can you tell me about the team I'd be working with?"
-  ];
-
-  const addSuggestedQuestionToAsk = (question: string) => {
-    const updatedQuestions = [...formData.questions_to_ask, { question, reason: '' }];
-    const updatedData = { ...formData, questions_to_ask: updatedQuestions };
-    setFormData(updatedData);
-    onUpdate(updatedData);
-  };
-
+  // --- Render ----------------------------------------------------------------
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="bg-white rounded-lg shadow-lg p-8">
         <div className="text-center mb-8">
           <HelpCircle className="w-16 h-16 text-blue-600 mx-auto mb-4" />
           <h2 className="text-3xl font-bold text-gray-800 mb-2">Interview Questions</h2>
-          <p className="text-gray-600">
-            Prepare answers for common questions and thoughtful questions to ask
-          </p>
+          <p className="text-gray-600">Prepare answers for common questions and thoughtful questions to ask</p>
         </div>
 
-        {/* Section 1: Questions to Prepare Answers For */}
+        {/* Persistent Section: All Prepared Questions (always visible) */}
+        <div className="mb-10">
+          <h3 className="text-2xl font-bold text-gray-800 mb-4 flex items-center">
+            <MessageSquare className="w-6 h-6 mr-3 text-blue-600" />
+            Your Prepared Questions & Answers
+          </h3>
+
+          {/* Empty state */}
+          {(['behavioral','technical','situational','company','career','personal'] as CatKey[]).every((k) => (getPreparedFor(k) || []).length === 0) ? (
+            <div className="rounded-lg border border-dashed border-gray-300 p-6 text-gray-600 bg-gray-50">
+              You haven\'t added any questions yet. Pick from the suggestions below or add a custom question by category.
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {(['behavioral','technical','situational','company','career','personal'] as CatKey[]).map((k) => {
+                const items = getPreparedFor(k) || [];
+                if (items.length === 0) return null;
+                const cat = catByKey[k];
+                return (
+                  <div key={k}>
+                    <div className="flex items-center mb-2">
+                      <span className={`inline-flex items-center gap-1 text-sm font-medium px-2 py-1 rounded ${getColorClasses(cat.color, false)}`}>
+                        <Tag className="w-3 h-3" /> {cat.title}
+                      </span>
+                      <span className="ml-2 text-sm text-gray-500">{items.length} {items.length > 1 ? 'questions' : 'question'}</span>
+                    </div>
+                    <div className="space-y-4">
+                      {items.map((item, index) => (
+                        <div key={index} className="bg-white rounded-lg p-4 border border-gray-200">
+                          <div className="flex items-start justify-between mb-3">
+                            <h6 className="font-medium text-gray-800">Question {index + 1}</h6>
+                            <button onClick={() => removeQuestion(`${k}_questions` as keyof typeof formData, index)} className="px-2 py-1 text-red-600 hover:text-red-800 text-sm">×</button>
+                          </div>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Question</label>
+                              <textarea
+                                value={item.question}
+                                onChange={(e) => updateQuestion(`${k}_questions` as keyof typeof formData, index, 'question', e.target.value)}
+                                placeholder="Enter the interview question..."
+                                className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+                                rows={2}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Your Answer</label>
+                              <textarea
+                                value={item.answer}
+                                onChange={(e) => updateQuestion(`${k}_questions` as keyof typeof formData, index, 'answer', e.target.value)}
+                                placeholder="Prepare your answer using the STAR method (Situation, Task, Action, Result)..."
+                                className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+                                rows={4}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Section: Suggestions (tabs) */}
         <div className="mb-12">
           <h3 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
             <MessageSquare className="w-6 h-6 mr-3 text-blue-600" />
-            Questions to Prepare Answers For
+            Suggestions by Category
           </h3>
 
           {/* Horizontal Tabs */}
@@ -217,10 +334,8 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
             {questionCategories.map((category) => (
               <button
                 key={category.key}
-                onClick={() => setActiveTab(category.key)}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-t-lg font-medium transition-colors ${
-                  getColorClasses(category.color, activeTab === category.key)
-                }`}
+                onClick={() => setActiveTab(category.key as CatKey)}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-t-lg font-medium transition-colors ${getColorClasses(category.color, activeTab === category.key)}`}
               >
                 {category.icon}
                 <span>{category.title}</span>
@@ -231,19 +346,15 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
           {/* Active Tab Content */}
           <div className="bg-gray-50 rounded-lg p-6">
             <div className="mb-4">
-              <h4 className="text-lg font-semibold text-gray-800 mb-2">
-                {getCurrentCategory().title} Questions
-              </h4>
-              <p className="text-gray-600 text-sm mb-4">
-                {getCurrentCategory().description}
-              </p>
+              <h4 className="text-lg font-semibold text-gray-800 mb-2">{getCurrentCategory().title} Questions</h4>
+              <p className="text-gray-600 text-sm mb-4">{getCurrentCategory().description}</p>
             </div>
 
-            {/* Suggested Questions */}
+            {/* Suggested Questions — filtered so selected ones disappear */}
             <div className="mb-6">
               <h5 className="font-medium text-gray-700 mb-3">💡 Common Questions (Click to Add)</h5>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {getCurrentCategory().examples.map((example, idx) => (
+                {filteredSuggestionsForActive().map((example, idx) => (
                   <button
                     key={idx}
                     onClick={() => addSuggestedQuestion(example)}
@@ -252,61 +363,19 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
                     {example}
                   </button>
                 ))}
+                {filteredSuggestionsForActive().length === 0 && (
+                  <div className="col-span-2 text-sm text-gray-500 italic">All common questions from this category are already in your prepared list.</div>
+                )}
               </div>
             </div>
 
-            {/* User's Questions */}
-            <div className="space-y-4">
-              <h5 className="font-medium text-gray-700">Your Prepared Questions & Answers</h5>
-              {getCurrentQuestions().map((item: any, index: number) => (
-                <div key={index} className="bg-white rounded-lg p-4 border border-gray-200">
-                  <div className="flex items-start justify-between mb-3">
-                    <h6 className="font-medium text-gray-800">Question {index + 1}</h6>
-                    <button
-                      onClick={() => removeQuestion(activeTab + '_questions' as keyof typeof formData, index)}
-                      className="px-2 py-1 text-red-600 hover:text-red-800 text-sm"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Question
-                      </label>
-                      <textarea
-                        value={item.question}
-                        onChange={(e) => updateQuestion(activeTab + '_questions' as keyof typeof formData, index, 'question', e.target.value)}
-                        placeholder="Enter the interview question..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                        rows={2}
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Your Answer
-                      </label>
-                      <textarea
-                        value={item.answer}
-                        onChange={(e) => updateQuestion(activeTab + '_questions' as keyof typeof formData, index, 'answer', e.target.value)}
-                        placeholder="Prepare your answer using the STAR method (Situation, Task, Action, Result)..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                        rows={4}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-              
-              <button
-                onClick={() => addQuestion(activeTab + '_questions' as keyof typeof formData)}
-                className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-              >
-                + Add {getCurrentCategory().title} Question
-              </button>
-            </div>
+            {/* Add custom to this category */}
+            <button
+              onClick={() => addQuestion((activeTab + '_questions') as keyof typeof formData)}
+              className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+              + Add Custom {getCurrentCategory().title} Question
+            </button>
           </div>
         </div>
 
@@ -323,19 +392,12 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
                 <div key={index} className="bg-white rounded-lg p-4 border border-green-200">
                   <div className="flex items-start justify-between mb-4">
                     <h4 className="text-lg font-medium text-gray-800">Question {index + 1}</h4>
-                    <button
-                      onClick={() => removeQuestion('questions_to_ask', index)}
-                      className="px-3 py-1 text-red-600 hover:text-red-800 font-medium"
-                    >
-                      ×
-                    </button>
+                    <button onClick={() => removeQuestion('questions_to_ask', index)} className="px-3 py-1 text-red-600 hover:text-red-800 font-medium">×</button>
                   </div>
-                  
+
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Your Question
-                      </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Your Question</label>
                       <textarea
                         value={item.question}
                         onChange={(e) => updateQuestion('questions_to_ask', index, 'question', e.target.value)}
@@ -344,11 +406,9 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
                         rows={2}
                       />
                     </div>
-                    
+
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Why This Question? (Your Notes)
-                      </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Why This Question? (Your Notes)</label>
                       <textarea
                         value={item.reason}
                         onChange={(e) => updateQuestion('questions_to_ask', index, 'reason', e.target.value)}
@@ -360,11 +420,8 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
                   </div>
                 </div>
               ))}
-              
-              <button
-                onClick={() => addQuestion('questions_to_ask')}
-                className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
-              >
+
+              <button onClick={() => addQuestion('questions_to_ask')} className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium">
                 + Add Question to Ask
               </button>
             </div>
@@ -373,9 +430,7 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
           {/* Suggested Questions */}
           <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
             <h4 className="text-lg font-semibold text-blue-800 mb-4">💡 Suggested Questions to Ask</h4>
-            <p className="text-blue-700 text-sm mb-4">
-              Click on any question below to add it to your list:
-            </p>
+            <p className="text-blue-700 text-sm mb-4">Click on any question below to add it to your list:</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {suggestedQuestionsToAsk.map((question, index) => (
                 <button
