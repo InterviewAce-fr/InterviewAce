@@ -41,11 +41,53 @@ type Step4Props = {
     responsibilities?: string[];
   };
   cvData?: {
-    skills?: string[];
-    education?: string[];
-    experience?: string[];
+    skills?: any[];
+    education?: any[];
+    experience?: any[];
   };
 };
+
+// Transform a table (strings/objets) into a table of string, depending on type
+function toStringArray(input: any, kind: 'skills' | 'edu' | 'exp'): string[] {
+  if (!Array.isArray(input)) return [];
+
+  return input
+    .map((item: any) => {
+      if (typeof item === 'string') return item;
+
+      if (item && typeof item === 'object') {
+        if (kind === 'edu') {
+          const degree = item.degree || item.title || item.program || '';
+          const school = item.school || item.university || item.institution || '';
+          const period =
+            [item.start, item.end].filter(Boolean).join('–') ||
+            [item.start_date, item.end_date].filter(Boolean).join('–');
+          const bits = [degree, school, period ? `(${period})` : ''].filter(Boolean);
+          return bits.join(' ');
+        }
+        if (kind === 'exp') {
+          const title = item.title || item.role || '';
+          const company = item.company || item.employer || '';
+          const period =
+            [item.start, item.end].filter(Boolean).join('–') ||
+            [item.start_date, item.end_date].filter(Boolean).join('–');
+          const ach = Array.isArray(item.achievements)
+            ? item.achievements.slice(0, 3).join('; ')
+            : (item.summary || '');
+          const header = title && company ? `${title} @ ${company}` : (title || company);
+          return [header, period ? `(${period})` : '', ach].filter(Boolean).join(' ');
+        }
+        // skills (au cas où ce serait des objets)
+        if (kind === 'skills') {
+          return item.name || item.skill || item.label || JSON.stringify(item);
+        }
+      }
+
+      return String(item);
+    })
+    .map(s => (s || '').toString().trim())
+    .filter(Boolean);
+}
 
 const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData }) => {
   const [loading, setLoading] = useState(false);
@@ -63,12 +105,18 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData })
     [];
 
   // CV arrays (depuis step4 data OU depuis profil (cvData) passé par PreparationJourney)
-  const cvSkills =
-    data.keySkills ?? (data as any).skills ?? cvData?.skills ?? [];
-  const cvEducation =
-    data.education ?? cvData?.education ?? [];
-  const cvExperience =
-    data.experience ?? cvData?.experience ?? [];
+  const cvSkills = toStringArray(
+    data.keySkills ?? (data as any).skills ?? cvData?.skills,
+    'skills'
+  );
+  const cvEducation = toStringArray(
+    data.education ?? cvData?.education,
+    'edu'
+  );
+  const cvExperience = toStringArray(
+    data.experience ?? cvData?.experience,
+    'exp'
+  );
 
   // Score global
   const score =
@@ -132,7 +180,15 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData })
 
       onUpdate({ ...data, matchingResults: normalized });
     } catch (e: any) {
-      setErr(e?.message || 'Failed to generate match results');
+      let msg = 'Failed to generate match results';
+      if (e?.response?.data) {
+        const d = e.response.data;
+        if (Array.isArray(d)) msg = d.map((x: any) => x.message || JSON.stringify(x)).join(' | ');
+        else if (typeof d === 'object' && d.error) msg = String(d.error);
+      } else if (e?.message) {
+        msg = e.message;
+      }
+      setErr(msg);
     } finally {
       setLoading(false);
     }
