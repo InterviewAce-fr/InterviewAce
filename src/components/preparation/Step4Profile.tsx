@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Building, ClipboardList, CheckSquare, RefreshCw, Flame, Circle } from 'lucide-react';
-import { aiService, type MatchingResultsFront } from '@/lib/aiService'; // ⬅️ corrige le chemin
+import { aiService, type MatchingResultsFront } from '@/lib/aiService';
 
 type MatchResult = {
   targetType: 'requirement' | 'responsibility';
@@ -21,7 +21,7 @@ type MatchingResults = {
 type Step4Data = {
   candidateProfile?: string;
   keyResponsibilities?: string[];
-  keySkills?: string[];     // ⬅️ on s’appuie dessus
+  keySkills?: string[];
   education?: string[];
   experience?: string[];
   cvText?: string;
@@ -36,16 +36,41 @@ type Step4Props = {
   jobData?: {
     keyRequirements?: string[];
     keyResponsibilities?: string[];
+    // fallbacks anciens schémas
+    required_profile?: string[];
+    responsibilities?: string[];
+  };
+  cvData?: {
+    skills?: string[];
+    education?: string[];
+    experience?: string[];
   };
 };
 
-const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
+const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData }) => {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const requirements = jobData?.keyRequirements ?? [];
-  const responsibilities = jobData?.keyResponsibilities ?? [];
+  // Job arrays (avec fallbacks vieux schémas)
+  const requirements =
+    jobData?.keyRequirements ??
+    jobData?.required_profile ??
+    [];
 
+  const responsibilities =
+    jobData?.keyResponsibilities ??
+    jobData?.responsibilities ??
+    [];
+
+  // CV arrays (depuis step4 data OU depuis profil (cvData) passé par PreparationJourney)
+  const cvSkills =
+    data.keySkills ?? (data as any).skills ?? cvData?.skills ?? [];
+  const cvEducation =
+    data.education ?? cvData?.education ?? [];
+  const cvExperience =
+    data.experience ?? cvData?.experience ?? [];
+
+  // Score global
   const score =
     typeof data.matchingResults?.overallScore === 'number'
       ? Math.round(data.matchingResults.overallScore)
@@ -72,15 +97,19 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
     return <Circle className="w-5 h-5" title="Weak match" />;
   };
 
-  // ✅ active si on a des données poste + CV
+  // ✅ actif si on a des données poste + CV (via data ou cvData)
   const canGenerate = useMemo(() => {
     const hasJob = (requirements.length + responsibilities.length) > 0;
-    const hasCV =
-      (data.keySkills?.length ?? 0) +
-      (data.education?.length ?? 0) +
-      (data.experience?.length ?? 0) > 0;
+    const hasCV = cvSkills.length + cvEducation.length + cvExperience.length > 0;
     return hasJob && hasCV && !loading;
-  }, [requirements.length, responsibilities.length, data.keySkills, data.education, data.experience, loading]);
+  }, [
+    requirements.length,
+    responsibilities.length,
+    cvSkills.length,
+    cvEducation.length,
+    cvExperience.length,
+    loading
+  ]);
 
   const handleGenerate = async () => {
     setErr(null);
@@ -89,9 +118,9 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
       const payload = {
         requirements,
         responsibilities,
-        education: data.education ?? [],
-        experience: data.experience ?? [],
-        skills: data.keySkills ?? [], // ⬅️ utilise keySkills
+        education: cvEducation,
+        experience: cvExperience,
+        skills: cvSkills,
       };
 
       const res: MatchingResultsFront = await aiService.matchProfile(payload);
@@ -131,7 +160,7 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData }) => {
             className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition
               ${canGenerate ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700'
                              : 'bg-gray-200 text-gray-500 border-gray-300 cursor-not-allowed'}`}
-            title={!canGenerate ? 'Ajoutez les données CV et poste pour lancer le matching' : 'Générer le matching IA'}
+            title={!canGenerate ? 'Add resume and job info to start matching' : 'Matching'}
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             {loading ? 'Generating…' : 'Generate'}

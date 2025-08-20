@@ -12,6 +12,8 @@ import Step5WhyQuestions from '../components/preparation/Step5WhyQuestions';
 import Step6Questions from '../components/preparation/Step6Questions';
 import Step7GenerateReport from '../components/preparation/Step7GenerateReport';
 
+const { user, profile } = useAuth();
+
 interface Preparation {
   id: string;
   title: string;
@@ -44,7 +46,7 @@ const PreparationJourney: React.FC = () => {
     { number: 1, title: 'Job Analysis', component: Step1JobAnalysis },
     { number: 2, title: 'Business Model', component: Step2BusinessModel },
     { number: 3, title: 'Company Strategy', component: Step3SWOT },
-    { number: 4, title: 'Your Profile', component: Step4Profile },
+    { number: 4, title: 'Matching Requirements', component: Step4Profile },
     { number: 5, title: 'Why Questions', component: Step5WhyQuestions },
     { number: 6, title: 'Interview Questions', component: Step6Questions },
     { number: 7, title: 'Generate Report', component: Step7GenerateReport },
@@ -388,7 +390,14 @@ const PreparationJourney: React.FC = () => {
           <CurrentStepComponent
             data={currentStepData}
             onUpdate={(data: any) => updateStepData(currentStep, data)}
-            cvData={(preparation as any).step_4_data}
+            cvData={
+              profile?.cv_parsed // si tu as un objet structuré
+              || {
+                skills: profile?.skills ?? [],
+                education: profile?.education ?? [],
+                experience: profile?.experience ?? [],
+              }
+            }
             jobData={(preparation as any).step_1_data}
             swotData={(preparation as any).step_3_data}
             matchingResults={(preparation as any).step_4_data?.matchingResults}
