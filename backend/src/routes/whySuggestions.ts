@@ -2,8 +2,6 @@
 import { Router } from "express";
 import { z } from "zod";
 import { generateWhySuggestions } from "../services/aiService.server";
-import { supabase } from "../lib/supabaseClient"; // ⚠️ ajoute un supabase client côté serveur
-import jwt from "jsonwebtoken"; // pour décoder rapidement le JWT si besoin
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -93,11 +91,10 @@ const PayloadSchema = z.object({
 });
 
 // --- Route ------------------------------------------
-router.post("/why-suggestions", requireAuth, async (req, res) => {
+router.post("/why-suggestions", authenticateToken, async (req, res) => {
   try {
     const payload = PayloadSchema.parse(req.body);
     const suggestions = await generateWhySuggestions(payload);
-
     res.json({
       whyCompany: suggestions.whyCompany ?? "",
       whyRole: suggestions.whyRole ?? "",
