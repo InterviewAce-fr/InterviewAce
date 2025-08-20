@@ -12,8 +12,6 @@ import Step5WhyQuestions from '../components/preparation/Step5WhyQuestions';
 import Step6Questions from '../components/preparation/Step6Questions';
 import Step7GenerateReport from '../components/preparation/Step7GenerateReport';
 
-const { user, profile } = useAuth();
-
 interface Preparation {
   id: string;
   title: string;
@@ -30,6 +28,8 @@ interface Preparation {
 }
 
 const PreparationJourney: React.FC = () => {
+  const { user, profile } = useAuth();
+  
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
