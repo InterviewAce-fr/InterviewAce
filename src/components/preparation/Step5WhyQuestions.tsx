@@ -289,7 +289,6 @@ const Step5WhyQuestions: React.FC<Step5Props> = ({
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-3">💡 Interview Tips</h3>
         <ul className="space-y-2 text-sm text-gray-700">
-          <li className="flex items-start"><span className="text-blue-600 mr-2">•</span>Use the STAR method (Situation, Task, Action, Result)</li>
           <li className="flex items-start"><span className="text-blue-600 mr-2">•</span>Quantify achievements with numbers where possible</li>
           <li className="flex items-start"><span className="text-blue-600 mr-2">•</span>Reference the company’s mission and current opportunities</li>
           <li className="flex items-start"><span className="text-blue-600 mr-2">•</span>Practice answers out loud to improve delivery</li>
