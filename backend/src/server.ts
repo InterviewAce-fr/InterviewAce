@@ -21,6 +21,7 @@ import aiRoutes from './routes/job';
 import swotRoutes from './routes/swot';
 import businessModelRoutes from './routes/businessModel';
 import matchProfileRouter from "./routes/matchProfile";
+import whySuggestionsRouter from "./routes/whySuggestions";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -109,6 +110,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/ai', swotRoutes);
 app.use('/api/ai', businessModelRoutes);
 app.use('/api/ai', matchProfileRouter);
+app.use("/api", whySuggestionsRouter);
 
 // 404 handler
 app.use('*', (req, res) => {

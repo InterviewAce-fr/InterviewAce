@@ -288,3 +288,33 @@ export async function matchProfile(input: MatchProfileInput): Promise<MatchingRe
     distribution
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* Step 5 — Why Suggestion                                            */
+/* ------------------------------------------------------------------ */
+
+export async function generateWhySuggestions(payload: {
+  cv: { skills: string[]; education: string[]; experience: string[] };
+  job: { requirements: string[]; responsibilities: string[]; [k: string]: any };
+  matches?: { overallScore?: number; matches?: any[] };
+  swotAndBmc?: {
+    strengths?: string[]; weaknesses?: string[]; opportunities?: string[];
+    threats?: string[];
+    bmc?: {
+      valuePropositions?: string[]; customerSegments?: string[];
+      keyActivities?: string[]; keyResources?: string[]; channels?: string[];
+    };
+  };
+}) {
+  // TODO: Plug your OpenAI call here. For now a simple templated fallback:
+  const topSkill = payload.matches?.matches?.[0]?.skill ?? payload.cv.skills[0] ?? "my core skill";
+  const firstOpp = payload.swotAndBmc?.opportunities?.[0];
+
+  return {
+    whyCompany: firstOpp
+      ? `I’m excited by your opportunity around ${firstOpp}, which aligns with my background and impact focus.`
+      : `I’m genuinely motivated by your mission and trajectory, and see a strong alignment with my experience.`,
+    whyRole: `This role maps to my strengths (e.g., ${topSkill}) and the responsibilities I enjoy. I’m eager to contribute to your key priorities.`,
+    whyYou: `You should hire me for my strengths in ${payload.cv.skills.slice(0, 3).join(", ")} and my track record of measurable results.`,
+  };
+}

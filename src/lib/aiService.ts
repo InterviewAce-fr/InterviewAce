@@ -250,6 +250,22 @@ class AIService {
       distribution,
     };
   }
+
+  // Step 5 — suggestions why questions
+  async generateWhySuggestions(cv: any, job: any, matches: any, swotAndBmc: any) {
+    const headers = await authHeaders();
+
+    const r = await fetch(api('/why-suggestions'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ cv, job, matches, swotAndBmc }),
+    });
+
+    const d = await r.json();
+    if (!r.ok) throw new Error(d?.error || 'Failed to generate why suggestions');
+
+    return d;
+  }
 }
 
 export const aiService = new AIService();
