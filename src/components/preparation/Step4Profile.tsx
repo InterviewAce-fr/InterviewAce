@@ -22,8 +22,8 @@ type Step4Data = {
   candidateProfile?: string;
   keyResponsibilities?: string[];
   keySkills?: string[];
-  education?: string[];
-  experience?: string[];
+  education?: string[] | any[];
+  experience?: string[] | any[];
   cvText?: string;
   matchingResults?: MatchingResults;
   requirementResponses?: string[];
@@ -36,21 +36,20 @@ type Step4Props = {
   jobData?: {
     keyRequirements?: string[];
     keyResponsibilities?: string[];
-    // fallbacks anciens schémas
     required_profile?: string[];
     responsibilities?: string[];
   };
   cvData?: {
-    skills?: any[];
-    education?: any[];
-    experience?: any[];
+    skills?: string[] | any[];
+    education?: string[] | any[];
+    experience?: string[] | any[];
   };
 };
 
-// Transform a table (strings/objets) into a table of string, depending on type
+// --- helpers ----------------------------------------------------
+
 function toStringArray(input: any, kind: 'skills' | 'edu' | 'exp'): string[] {
   if (!Array.isArray(input)) return [];
-
   return input
     .map((item: any) => {
       if (typeof item === 'string') return item;
@@ -77,48 +76,62 @@ function toStringArray(input: any, kind: 'skills' | 'edu' | 'exp'): string[] {
           const header = title && company ? `${title} @ ${company}` : (title || company);
           return [header, period ? `(${period})` : '', ach].filter(Boolean).join(' ');
         }
-        // skills (au cas où ce serait des objets)
         if (kind === 'skills') {
           return item.name || item.skill || item.label || JSON.stringify(item);
         }
       }
-
       return String(item);
     })
-    .map(s => (s || '').toString().trim())
+    .map((s) => (s || '').toString().trim())
     .filter(Boolean);
 }
+
+function gradeBadge(grade?: 'High' | 'Moderate' | 'Low', score?: number) {
+  // petit label : Perfect (>=90), High (>=75), Moderate (>=50), Low (<50)
+  const s = typeof score === 'number' ? score : -1;
+  let label = 'Low';
+  let cls = 'bg-red-100 text-red-700 border-red-200';
+  if (s >= 90) { label = 'Perfect'; cls = 'bg-emerald-100 text-emerald-700 border-emerald-200'; }
+  else if (s >= 75) { label = 'High'; cls = 'bg-green-100 text-green-700 border-green-200'; }
+  else if (s >= 50) { label = 'Moderate'; cls = 'bg-amber-100 text-amber-700 border-amber-200'; }
+
+  // si score pas fourni, retomber sur grade
+  if (s < 0 && grade) {
+    if (grade === 'High') { label = 'High'; cls = 'bg-green-100 text-green-700 border-green-200'; }
+    if (grade === 'Moderate') { label = 'Moderate'; cls = 'bg-amber-100 text-amber-700 border-amber-200'; }
+    if (grade === 'Low') { label = 'Low'; cls = 'bg-red-100 text-red-700 border-red-200'; }
+  }
+
+  return { label, cls };
+}
+
+function formatAnswer(m: MatchResult | undefined): string {
+  if (!m) return 'No direct match can be established.';
+  // phrase simple et éditable par l’utilisateur
+  // On combine skill + reasoning s’ils existent
+  const parts = [];
+  if (m.skill) parts.push(`Skill: ${m.skill}.`);
+  if (m.reasoning) parts.push(m.reasoning);
+  const text = parts.join(' ');
+  return text || 'No direct match can be established.';
+}
+
+// ----------------------------------------------------------------
 
 const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData }) => {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Job arrays (avec fallbacks vieux schémas)
-  const requirements =
-    jobData?.keyRequirements ??
-    jobData?.required_profile ??
-    [];
+  // job
+  const requirements = jobData?.keyRequirements ?? jobData?.required_profile ?? [];
+  const responsibilities = jobData?.keyResponsibilities ?? jobData?.responsibilities ?? [];
 
-  const responsibilities =
-    jobData?.keyResponsibilities ??
-    jobData?.responsibilities ??
-    [];
+  // cv
+  const cvSkills = toStringArray(data.keySkills ?? (data as any).skills ?? cvData?.skills, 'skills');
+  const cvEducation = toStringArray(data.education ?? cvData?.education, 'edu');
+  const cvExperience = toStringArray(data.experience ?? cvData?.experience, 'exp');
 
-  // CV arrays (depuis step4 data OU depuis profil (cvData) passé par PreparationJourney)
-  const cvSkills = toStringArray(
-    data.keySkills ?? (data as any).skills ?? cvData?.skills,
-    'skills'
-  );
-  const cvEducation = toStringArray(
-    data.education ?? cvData?.education,
-    'edu'
-  );
-  const cvExperience = toStringArray(
-    data.experience ?? cvData?.experience,
-    'exp'
-  );
-
-  // Score global
+  // score global
   const score =
     typeof data.matchingResults?.overallScore === 'number'
       ? Math.round(data.matchingResults.overallScore)
@@ -130,14 +143,12 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData })
     if (s < 75) return 'text-yellow-600 border-yellow-300';
     return 'text-green-600 border-green-300';
   };
-
   const getScoreBg = (s: number | null) => {
     if (s === null) return 'bg-gray-50';
     if (s < 50) return 'bg-red-50';
     if (s < 75) return 'bg-yellow-50';
     return 'bg-green-50';
   };
-
   const getMatchIcon = (v: number) => {
     if (v >= 90) return <Flame className="w-5 h-5" title="Excellent match" />;
     if (v >= 75) return <Circle className="w-5 h-5" title="Good match" />;
@@ -145,7 +156,7 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData })
     return <Circle className="w-5 h-5" title="Weak match" />;
   };
 
-  // ✅ actif si on a des données poste + CV (via data ou cvData)
+  // bouton activé si job + cv
   const canGenerate = useMemo(() => {
     const hasJob = (requirements.length + responsibilities.length) > 0;
     const hasCV = cvSkills.length + cvEducation.length + cvExperience.length > 0;
@@ -172,13 +183,39 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData })
       };
 
       const res: MatchingResultsFront = await aiService.matchProfile(payload);
+
+      // Normalisation du résultat global
       const normalized: MatchingResults = {
         overallScore: res.overallScore ?? 0,
         matches: Array.isArray(res.matches) ? res.matches : [],
         distribution: res.distribution ?? { high: 0, moderate: 0, low: 0 },
       };
 
-      onUpdate({ ...data, matchingResults: normalized });
+      // --- Auto‑remplissage des réponses par meilleur match par item ----
+      // requirement -> meilleur match (score max) pour l’index
+      const bestReqMatch: Record<number, MatchResult | undefined> = {};
+      const bestResMatch: Record<number, MatchResult | undefined> = {};
+
+      for (const m of normalized.matches) {
+        if (m.targetType === 'requirement') {
+          const cur = bestReqMatch[m.targetIndex];
+          if (!cur || (m.score ?? 0) > (cur.score ?? 0)) bestReqMatch[m.targetIndex] = m;
+        } else {
+          const cur = bestResMatch[m.targetIndex];
+          if (!cur || (m.score ?? 0) > (cur.score ?? 0)) bestResMatch[m.targetIndex] = m;
+        }
+      }
+
+      const nextRequirementResponses = requirements.map((_, i) => formatAnswer(bestReqMatch[i]));
+      const nextResponsibilityResponses = responsibilities.map((_, i) => formatAnswer(bestResMatch[i]));
+
+      // pousse dans le state (et donc dans supabase via onUpdate plus tard)
+      onUpdate({
+        ...data,
+        matchingResults: normalized,
+        requirementResponses: nextRequirementResponses,
+        responsibilityResponses: nextResponsibilityResponses,
+      });
     } catch (e: any) {
       let msg = 'Failed to generate match results';
       if (e?.response?.data) {
@@ -253,31 +290,43 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData })
             <p className="text-blue-600 text-sm italic">Complete Step 1 Job Analysis to see requirements</p>
           ) : (
             <div className="space-y-4">
-              {requirements.map((req, idx) => (
-                <div key={idx} className="bg-white rounded-lg border border-blue-200 p-4">
-                  <div className="flex items-center justify-between gap-3">
+              {requirements.map((req, idx) => {
+                const m = data.matchingResults?.matches.find(
+                  (x) => x.targetType === 'requirement' && x.targetIndex === idx
+                );
+                const badge = gradeBadge(m?.grade, m?.score);
+                return (
+                  <div key={idx} className="bg-white rounded-lg border border-blue-200 p-4 relative">
+                    {/* badge score */}
+                    <div
+                      className={`absolute top-3 right-3 text-xs border px-2 py-0.5 rounded-full ${badge.cls}`}
+                      title={m ? `${badge.label} • ${m.score ?? '-'} / 100` : 'No match'}
+                    >
+                      {m ? `${badge.label}` : 'No match'}
+                    </div>
+
                     <div className="text-gray-800 text-sm">{req}</div>
+                    <div className="mt-3">
+                      <textarea
+                        value={data.requirementResponses?.[idx] ?? ''}
+                        onChange={(e) => {
+                          const base = data.requirementResponses ?? Array(requirements.length).fill('');
+                          const next = [...base];
+                          if (requirements.length > next.length) {
+                            next.length = requirements.length;
+                            next.fill('', base.length);
+                          }
+                          next[idx] = e.target.value;
+                          onUpdate({ ...data, requirementResponses: next });
+                        }}
+                        placeholder="Explain briefly how your education/experience fits this requirement…"
+                        rows={3}
+                        className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      />
+                    </div>
                   </div>
-                  <div className="mt-3">
-                    <textarea
-                      value={data.requirementResponses?.[idx] ?? ''}
-                      onChange={(e) => {
-                        const base = data.requirementResponses ?? [];
-                        const next = [...base];
-                        if (requirements.length > next.length) {
-                          next.length = requirements.length;
-                          next.fill('', base.length);
-                        }
-                        next[idx] = e.target.value;
-                        onUpdate({ ...data, requirementResponses: next });
-                      }}
-                      placeholder="Expliquez brièvement en quoi votre éducation ou expérience répond à cette exigence…"
-                      rows={3}
-                      className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                    />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -293,31 +342,43 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData })
             <p className="text-blue-600 text-sm italic">Complete Step 1 Job Analysis to see responsibilities</p>
           ) : (
             <div className="space-y-4">
-              {responsibilities.map((res, idx) => (
-                <div key={idx} className="bg-white rounded-lg border border-blue-200 p-4">
-                  <div className="flex items-center justify-between gap-3">
+              {responsibilities.map((res, idx) => {
+                const m = data.matchingResults?.matches.find(
+                  (x) => x.targetType === 'responsibility' && x.targetIndex === idx
+                );
+                const badge = gradeBadge(m?.grade, m?.score);
+                return (
+                  <div key={idx} className="bg-white rounded-lg border border-blue-200 p-4 relative">
+                    {/* badge score */}
+                    <div
+                      className={`absolute top-3 right-3 text-xs border px-2 py-0.5 rounded-full ${badge.cls}`}
+                      title={m ? `${badge.label} • ${m.score ?? '-'} / 100` : 'No match'}
+                    >
+                      {m ? `${badge.label}` : 'No match'}
+                    </div>
+
                     <div className="text-gray-800 text-sm">{res}</div>
+                    <div className="mt-3">
+                      <textarea
+                        value={data.responsibilityResponses?.[idx] ?? ''}
+                        onChange={(e) => {
+                          const base = data.responsibilityResponses ?? Array(responsibilities.length).fill('');
+                          const next = [...base];
+                          if (responsibilities.length > next.length) {
+                            next.length = responsibilities.length;
+                            next.fill('', base.length);
+                          }
+                          next[idx] = e.target.value;
+                          onUpdate({ ...data, responsibilityResponses: next });
+                        }}
+                        placeholder="Give a measurable example proving you can own this responsibility…"
+                        rows={3}
+                        className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      />
+                    </div>
                   </div>
-                  <div className="mt-3">
-                    <textarea
-                      value={data.responsibilityResponses?.[idx] ?? ''}
-                      onChange={(e) => {
-                        const base = data.responsibilityResponses ?? [];
-                        const next = [...base];
-                        if (responsibilities.length > next.length) {
-                          next.length = responsibilities.length;
-                          next.fill('', base.length);
-                        }
-                        next[idx] = e.target.value;
-                        onUpdate({ ...data, responsibilityResponses: next });
-                      }}
-                      placeholder="Donnez un exemple mesurable qui prouve que vous pouvez assumer cette responsabilité…"
-                      rows={3}
-                      className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                    />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -358,7 +419,7 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData })
                       <span className="mx-2 text-gray-300">•</span>
                       <span className={
                         m.grade === 'High' ? 'text-green-600'
-                        : m.grade === 'Moderate' ? 'text-orange-600'
+                        : m.grade === 'Moderate' ? 'text-amber-600'
                         : 'text-red-600'
                       }>
                         {m.grade}
