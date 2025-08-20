@@ -100,9 +100,12 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
       acc[c.key] = c; return acc; }, {} as any);
   }, []);
 
-  // --- Track which suggestions are currently selected so we can gray them out -
+  // --- Track selected suggestions so we can gray them out --------------------
   const makeKey = (cat: CatKey, text: string) => `${cat}::${text.trim()}`;
   const [selectedSuggestionKeys, setSelectedSuggestionKeys] = useState<Set<string>>(new Set());
+
+  // For "Questions to Ask" suggestions (no categories)
+  const [selectedAskSuggestionKeys, setSelectedAskSuggestionKeys] = useState<Set<string>>(new Set());
 
   // --- CRUD helpers ----------------------------------------------------------
   const commit = (updated: typeof formData) => { setFormData(updated); onUpdate(updated); };
@@ -118,7 +121,12 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
   };
 
   const removeQuestion = (category: keyof typeof formData, index: number) => {
-    if (category !== 'questions_to_ask') {
+    if (category === 'questions_to_ask') {
+      const item = formData.questions_to_ask[index];
+      if (item && askSuggestions.includes(item.question)) {
+        setSelectedAskSuggestionKeys((prev) => { const next = new Set(prev); next.delete(item.question.trim()); return next; });
+      }
+    } else {
       const catKey = category.replace('_questions', '') as CatKey;
       const item = (formData[category] as QAItem[])[index];
       if (item && catByKey[catKey].examples.includes(item.question)) {
@@ -133,14 +141,13 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
     const category = (activeTab + '_questions') as keyof typeof formData;
     if (category !== 'questions_to_ask') {
       const key = makeKey(activeTab, question);
-      // guard against double-adds via disabled button
-      if (selectedSuggestionKeys.has(key)) return;
+      if (selectedSuggestionKeys.has(key)) return; // guard
       setSelectedSuggestionKeys((prev) => new Set(prev).add(key));
       commit({ ...formData, [category]: [...(formData[category] as QAItem[]), { question, answer: '' }] });
     }
   };
 
-  const suggestedQuestionsToAsk = [
+  const askSuggestions = [
     'What does success look like in this role after 6 months?',
     'What are the biggest challenges facing the team right now?',
     'How would you describe the company culture?',
@@ -152,6 +159,9 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
   ];
 
   const addSuggestedQuestionToAsk = (question: string) => {
+    const key = question.trim();
+    if (selectedAskSuggestionKeys.has(key)) return; // guard
+    setSelectedAskSuggestionKeys((prev) => new Set(prev).add(key));
     commit({ ...formData, questions_to_ask: [...formData.questions_to_ask, { question, reason: '' }] });
   };
 
@@ -215,23 +225,11 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
                           <div className="space-y-3">
                             <div>
                               <label className="block text-xs font-medium text-gray-700 mb-1">Question</label>
-                              <textarea
-                                value={item.question}
-                                onChange={(e) => updateQuestion(`${k}_questions` as keyof typeof formData, index, 'question', e.target.value)}
-                                placeholder="Enter the interview question..."
-                                className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                                rows={2}
-                              />
+                              <textarea value={item.question} onChange={(e) => updateQuestion(`${k}_questions` as keyof typeof formData, index, 'question', e.target.value)} placeholder="Enter the interview question..." className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none" rows={2} />
                             </div>
                             <div>
                               <label className="block text-xs font-medium text-gray-700 mb-1">Your Answer</label>
-                              <textarea
-                                value={item.answer}
-                                onChange={(e) => updateQuestion(`${k}_questions` as keyof typeof formData, index, 'answer', e.target.value)}
-                                placeholder="Prepare your answer using the STAR method (Situation, Task, Action, Result)..."
-                                className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                                rows={4}
-                              />
+                              <textarea value={item.answer} onChange={(e) => updateQuestion(`${k}_questions` as keyof typeof formData, index, 'answer', e.target.value)} placeholder="Prepare your answer using the STAR method (Situation, Task, Action, Result)..." className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none" rows={4} />
                             </div>
                           </div>
                         </div>
@@ -251,7 +249,7 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
             Suggestions by Category
           </h3>
 
-        {/* Horizontal Tabs */}
+          {/* Horizontal Tabs */}
           <div className="flex flex-wrap gap-2 mb-6 border-b">
             {questionCategories.map((category) => (
               <button key={category.key} onClick={() => setActiveTab(category.key as CatKey)} className={`flex items-center space-x-2 px-4 py-2 rounded-t-lg font-medium transition-colors ${getColorClasses(category.color, activeTab === category.key)}`}>
@@ -332,13 +330,26 @@ const Step6Questions: React.FC<Step6QuestionsProps> = ({ data, onUpdate }) => {
             </div>
           </div>
 
+          {/* Suggested Questions to Ask — show all, but gray out selected ones */}
           <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
             <h4 className="text-lg font-semibold text-blue-800 mb-4">💡 Suggested Questions to Ask</h4>
             <p className="text-blue-700 text-sm mb-4">Click on any question below to add it to your list:</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {suggestedQuestionsToAsk.map((question, index) => (
-                <button key={index} onClick={() => addSuggestedQuestionToAsk(question)} className="text-left p-3 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors text-sm text-gray-700">{question}</button>
-              ))}
+              {askSuggestions.map((q, index) => {
+                const isPicked = selectedAskSuggestionKeys.has(q.trim());
+                return (
+                  <button
+                    key={index}
+                    onClick={() => !isPicked && addSuggestedQuestionToAsk(q)}
+                    disabled={isPicked}
+                    aria-disabled={isPicked}
+                    className={`text-left p-3 border rounded-lg transition-colors text-sm ${isPicked ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed' : 'bg-white border-blue-200 hover:bg-blue-50 text-gray-700'}`}
+                    title={isPicked ? 'Already added above' : 'Add to your list'}
+                  >
+                    {q}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
