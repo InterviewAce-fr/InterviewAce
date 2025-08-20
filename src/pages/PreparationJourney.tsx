@@ -440,6 +440,7 @@ const PreparationJourney: React.FC = () => {
             onUpdate={(data: any) => updateStepData(currentStep, data)}
             cvData={resumeCv ?? { skills: [], education: [], experience: [] }}
             jobData={(preparation as any).step_1_data}
+            bmcData={(preparation as any).step_2_data}
             swotData={(preparation as any).step_3_data}
             matchingResults={(preparation as any).step_4_data?.matchingResults}
             companyName={(preparation as any).step_1_data?.company_name}
