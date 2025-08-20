@@ -298,23 +298,91 @@ export async function generateWhySuggestions(payload: {
   job: { requirements: string[]; responsibilities: string[]; [k: string]: any };
   matches?: { overallScore?: number; matches?: any[] };
   swotAndBmc?: {
-    strengths?: string[]; weaknesses?: string[]; opportunities?: string[];
-    threats?: string[];
+    strengths?: string[]; weaknesses?: string[]; opportunities?: string[]; threats?: string[];
     bmc?: {
       valuePropositions?: string[]; customerSegments?: string[];
       keyActivities?: string[]; keyResources?: string[]; channels?: string[];
     };
   };
 }) {
-  // TODO: Plug your OpenAI call here. For now a simple templated fallback:
-  const topSkill = payload.matches?.matches?.[0]?.skill ?? payload.cv.skills[0] ?? "my core skill";
-  const firstOpp = payload.swotAndBmc?.opportunities?.[0];
+  // 🔒 Sortie attendue: JSON strict
+  const system = `
+Return STRICT JSON with exactly these keys and string values:
+{
+  "whyCompany": "",
+  "whyRole": "",
+  "whyYou": ""
+}
+Guidelines:
+- Write concise, specific, high-signal answers (3–6 sentences each).
+- No bullet points, no markdown, no emojis, no lists.
+- Use concrete details from inputs (e.g., responsibilities, requirements, top skills, SWOT opportunities, BMC value propositions/channels/segments).
+- Show credibility with tiny evidence (impact, metrics, relevant skills).
+- Avoid generic platitudes (“passionate”, “fast learner”) unless tied to evidence.
+- If inputs appear French, answer in French; otherwise answer in English.
+- Do not include any preambles or explanations. Output valid JSON only.
+`;
+
+  // Construit un objet utilisateur compact pour le prompt
+  const userPayload = {
+    job: {
+      title: payload.job?.job_title ?? payload.job?.title ?? null,
+      company: payload.job?.company_name ?? payload.job?.company ?? null,
+      requirements: payload.job?.requirements ?? [],
+      responsibilities: payload.job?.responsibilities ?? [],
+      description: payload.job?.job_description ?? null
+    },
+    cv: {
+      skills: payload.cv?.skills ?? [],
+      education: payload.cv?.education ?? [],
+      experience: payload.cv?.experience ?? []
+    },
+    matches: payload.matches ?? null,
+    swot: {
+      strengths: payload.swotAndBmc?.strengths ?? [],
+      weaknesses: payload.swotAndBmc?.weaknesses ?? [],
+      opportunities: payload.swotAndBmc?.opportunities ?? [],
+      threats: payload.swotAndBmc?.threats ?? []
+    },
+    bmc: payload.swotAndBmc?.bmc ?? null
+  };
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.5,
+    max_tokens: 900,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: JSON.stringify(userPayload) }
+    ]
+  });
+
+  // Parse défensif
+  const raw = completion.choices?.[0]?.message?.content ?? "{}";
+  let parsed: any = {};
+  try { parsed = JSON.parse(raw); } catch { parsed = {}; }
+
+  const str = (v: any) => (typeof v === "string" ? v.trim() : "");
+  const fallbackWhyCompany =
+    userPayload.swot.opportunities?.[0]
+      ? `Je suis motivé par l’opportunité autour de ${userPayload.swot.opportunities[0]}, en lien direct avec mon expérience et l’impact que je peux apporter.`
+      : `Je suis réellement aligné avec votre mission et votre trajectoire, et je vois une forte cohérence avec mon parcours.`;
+
+  const topSkill =
+    (userPayload.matches?.matches?.[0]?.skill) ||
+    (userPayload.cv.skills?.[0]) ||
+    "mes compétences clés";
+
+  const fallbackWhyRole =
+    `Le rôle s’aligne sur mes forces (ex. ${topSkill}) et les responsabilités que j’apprécie, avec une contribution directe aux priorités de l’équipe.`;
+
+  const fallbackWhyYou =
+    `Vous devriez me recruter pour mes forces en ${userPayload.cv.skills?.slice(0,3).join(", ") || topSkill} et mon historique de résultats mesurables.`;
 
   return {
-    whyCompany: firstOpp
-      ? `I’m excited by your opportunity around ${firstOpp}, which aligns with my background and impact focus.`
-      : `I’m genuinely motivated by your mission and trajectory, and see a strong alignment with my experience.`,
-    whyRole: `This role maps to my strengths (e.g., ${topSkill}) and the responsibilities I enjoy. I’m eager to contribute to your key priorities.`,
-    whyYou: `You should hire me for my strengths in ${payload.cv.skills.slice(0, 3).join(", ")} and my track record of measurable results.`,
+    whyCompany: str(parsed.whyCompany) || fallbackWhyCompany,
+    whyRole:    str(parsed.whyRole)    || fallbackWhyRole,
+    whyYou:     str(parsed.whyYou)     || fallbackWhyYou
   };
 }
