@@ -29,10 +29,9 @@ interface Preparation {
 
 const PreparationJourney: React.FC = () => {
   const { user, profile } = useAuth();
-  
+
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
 
   const [currentStep, setCurrentStep] = useState(1);
   const [preparation, setPreparation] = useState<Preparation | null>(null);
