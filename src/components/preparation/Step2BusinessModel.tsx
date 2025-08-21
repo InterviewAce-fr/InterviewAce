@@ -360,19 +360,20 @@ const BusinessModelSection: React.FC<BusinessModelSectionProps> = ({
           {items.map((item, index) => (
             <li key={index} className="group flex items-center">
               {/* input “ghost” : pas de boîte, juste du texte éditable */}
-              <input
-                type="text"
+              <textarea
                 value={item}
                 onChange={(e) => onUpdateItem(index, e.target.value)}
                 placeholder="Ajouter un élément…"
+                rows={1}
                 className="w-full bg-transparent border-0 px-0 py-2 text-sm text-gray-900
-                           placeholder-gray-400 focus:outline-none focus:ring-0
-                           group-hover:bg-gray-50 rounded"
+                          placeholder-gray-400 focus:outline-none focus:ring-0
+                          group-hover:bg-gray-50 rounded resize-y leading-snug
+                          overflow-hidden"
               />
               <button
                 onClick={() => onRemoveItem(index)}
                 className="ml-2 shrink-0 opacity-0 group-hover:opacity-100
-                           text-red-400 hover:text-red-600 transition-opacity"
+                          text-red-400 hover:text-red-600 transition-opacity"
                 aria-label="Remove item"
               >
                 <X className="w-4 h-4" />
