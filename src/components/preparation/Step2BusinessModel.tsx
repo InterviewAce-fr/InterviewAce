@@ -264,13 +264,20 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate,
         </div>
       </div>
 
-      <div className="grid grid-cols-5 grid-rows-3 gap-4 h-[800px]" style={{
-        gridTemplateAreas: `
-          "partners activities value relationships segments"
-          "partners resources value channels segments"
-          "costs costs revenue revenue revenue"
-        `
-      }}>
+      <div
+        className="grid gap-4 auto-rows-fr min-h-0
+                  md:grid-cols-3 md:auto-rows-fr
+                  xl:grid-cols-5 xl:min-h-0"
+        style={{
+          // on garde tes grid-areas pour desktop (xl)
+          gridTemplateAreas: `
+            "partners activities value relationships segments"
+            "partners resources  value channels      segments"
+            "costs    costs      revenue revenue      revenue"
+          `
+        }}
+      >
+        
         {sections.map((section) => (
           <BusinessModelSection
             key={section.key}
