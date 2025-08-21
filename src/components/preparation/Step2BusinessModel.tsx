@@ -266,10 +266,9 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate,
 
       <div
         className="grid gap-4 auto-rows-fr min-h-0
-                  md:grid-cols-3 md:auto-rows-fr
-                  xl:grid-cols-5 xl:min-h-0"
+                  md:grid-cols-3
+                  xl:grid-cols-5"
         style={{
-          // on garde tes grid-areas pour desktop (xl)
           gridTemplateAreas: `
             "partners activities value relationships segments"
             "partners resources  value channels      segments"
@@ -277,7 +276,7 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate,
           `
         }}
       >
-        
+
         {sections.map((section) => (
           <BusinessModelSection
             key={section.key}
@@ -317,71 +316,84 @@ const BusinessModelSection: React.FC<BusinessModelSectionProps> = ({
   const [showTips, setShowTips] = useState(false);
 
   return (
-    <div 
-      className="bg-white border-2 border-gray-200 rounded-lg p-4 flex flex-col"
+    <div
+      className="relative bg-white border-2 border-gray-200 rounded-xl p-4
+                 flex flex-col overflow-hidden min-h-0"
       style={{ gridArea: section.gridArea }}
     >
-      <div className="flex items-center justify-between mb-3">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-2 shrink-0">
         <h3 className="font-semibold text-gray-900 text-sm">{section.title}</h3>
         <button
           onClick={() => setShowTips(!showTips)}
           className="text-gray-400 hover:text-gray-600 transition-colors"
+          aria-label="Show tips"
         >
           <HelpCircle className="w-4 h-4" />
         </button>
       </div>
 
-      <p className="text-xs text-gray-600 mb-3">{section.description}</p>
+      <p className="text-xs text-gray-600 mb-2 shrink-0">{section.description}</p>
 
+      {/* Tips (optionnel) */}
       {showTips && (
-        <div className="mb-3 p-2 bg-blue-50 rounded border">
+        <div className="mb-2 p-2 bg-blue-50 rounded-lg border shrink-0">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-medium text-blue-700">Tips:</span>
-            <button
-              onClick={() => setShowTips(false)}
-              className="text-blue-400 hover:text-blue-600"
-            >
+            <span className="text-xs font-medium text-blue-700">Tips</span>
+            <button onClick={() => setShowTips(false)} className="text-blue-400 hover:text-blue-600">
               <ChevronUp className="w-3 h-3" />
             </button>
           </div>
-          <ul className="text-xs text-blue-600 space-y-1">
-            {section.tips.map((tip, index) => (
-              <li key={index} className="flex items-start">
-                <span className="mr-1">•</span>
-                <span>{tip}</span>
+          <ul className="text-xs text-blue-700 space-y-1">
+            {section.tips.map((tip, i) => (
+              <li key={i} className="flex items-start">
+                <span className="mr-1">•</span><span>{tip}</span>
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      <div className="flex-1 space-y-2 mb-3">
-        {(items || []).map((item, index) => (
-          <div key={index} className="flex items-center space-x-2">
-            <input
-              type="text"
-              value={item}
-              onChange={(e) => onUpdateItem(index, e.target.value)}
-              className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter item..."
-            />
-            <button
-              onClick={() => onRemoveItem(index)}
-              className="text-red-400 hover:text-red-600 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        ))}
+      {/* Liste des items (scrollable) */}
+      <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+        <ul className="divide-y divide-gray-200">
+          {items.map((item, index) => (
+            <li key={index} className="group flex items-center">
+              {/* input “ghost” : pas de boîte, juste du texte éditable */}
+              <input
+                type="text"
+                value={item}
+                onChange={(e) => onUpdateItem(index, e.target.value)}
+                placeholder="Ajouter un élément…"
+                className="w-full bg-transparent border-0 px-0 py-2 text-sm text-gray-900
+                           placeholder-gray-400 focus:outline-none focus:ring-0
+                           group-hover:bg-gray-50 rounded"
+              />
+              <button
+                onClick={() => onRemoveItem(index)}
+                className="ml-2 shrink-0 opacity-0 group-hover:opacity-100
+                           text-red-400 hover:text-red-600 transition-opacity"
+                aria-label="Remove item"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
       </div>
 
-      <button
-        onClick={onAddItem}
-        className="flex items-center justify-center space-x-1 px-3 py-2 text-sm text-blue-600 border border-blue-300 rounded hover:bg-blue-50 transition-colors"
-      >
-        <Plus className="w-4 h-4" />
-        <span>Add Item</span>
-      </button>
+      {/* Footer (toujours à l’intérieur de la carte) */}
+      <div className="pt-3 border-t border-gray-100 mt-3 shrink-0">
+        <button
+          onClick={onAddItem}
+          className="inline-flex items-center space-x-1 px-3 py-2 text-sm
+                     text-blue-600 border border-blue-200 rounded-lg
+                     hover:bg-blue-50 transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Ajouter un élément</span>
+        </button>
+      </div>
     </div>
   );
 };
