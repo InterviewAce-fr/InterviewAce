@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { Plus, X, HelpCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from '../ui/Toast';
 import { aiService } from '@/lib/aiService';
@@ -33,6 +33,43 @@ interface Step2BusinessModelProps {
   data: BusinessModelData;
   onUpdate: (data: BusinessModelData) => void;
   companyName?: string;
+}
+
+function AutoGrowTextarea({
+  value,
+  onChange,
+  placeholder,
+  className = "",
+}: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = el.scrollHeight + "px";
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      rows={1}
+      className={
+        "w-full bg-transparent border-0 px-0 py-2 text-sm text-gray-900 " +
+        "placeholder-gray-400 focus:outline-none focus:ring-0 " +
+        "group-hover:bg-gray-50 rounded resize-none overflow-hidden leading-snug " +
+        className
+      }
+    />
+  );
 }
 
 const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate, companyName }) => {
@@ -358,17 +395,11 @@ const BusinessModelSection: React.FC<BusinessModelSectionProps> = ({
       <div className="flex-1 min-h-0 overflow-y-auto pr-1">
         <ul className="divide-y divide-gray-200">
           {items.map((item, index) => (
-            <li key={index} className="group flex items-center">
-              {/* input “ghost” : pas de boîte, juste du texte éditable */}
-              <textarea
+            <li key={index} className="group flex items-start">
+              <AutoGrowTextarea
                 value={item}
                 onChange={(e) => onUpdateItem(index, e.target.value)}
                 placeholder="Ajouter un élément…"
-                rows={1}
-                className="w-full bg-transparent border-0 px-0 py-2 text-sm text-gray-900
-                          placeholder-gray-400 focus:outline-none focus:ring-0
-                          group-hover:bg-gray-50 rounded resize-y leading-snug
-                          overflow-hidden"
               />
               <button
                 onClick={() => onRemoveItem(index)}
