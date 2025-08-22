@@ -75,6 +75,15 @@ export interface MatchingResultsFront {
   distribution: { high: number; moderate: number; low: number };
 }
 
+export interface TopNewsItem {
+  title: string;
+  summary: string;
+  date: string;   // ISO
+  url: string;
+  source?: string;
+  category?: string;
+}
+
 class AIService {
 
   async analyzeJobFromUrl(_url: string): Promise<JobAnalysisResult> {
@@ -265,6 +274,25 @@ class AIService {
     if (!r.ok) throw new Error(d?.error || 'Failed to generate why suggestions');
 
     return d;
+  }
+
+  // Step 3 - Top 3 News
+  async getTopNews(params: { company_name?: string; months?: number; limit?: number }): Promise<TopNewsItem[]> {
+    const headers = await authHeaders(); // ✅ cohérent avec les autres méthodes
+    const r = await fetch(api(`/ai/top-news`), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        company_name: params.company_name,
+        months: params.months ?? 18,
+        limit: params.limit ?? 3,
+      }),
+    });
+
+    const d = await r.json();
+    if (!r.ok) throw new Error(d?.error || 'Failed to fetch top news');
+
+    return d as TopNewsItem[];
   }
 }
 
