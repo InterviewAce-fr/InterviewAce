@@ -1,21 +1,10 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { Plus, X, HelpCircle, ChevronDown, ChevronUp } from 'lucide-react';
-import { toast } from '../ui/Toast';
+import React, { useState } from 'react';
+import { Plus, X, HelpCircle, ChevronUp } from 'lucide-react';
+import { toast } from '@/components/ui/Toast';
 import { aiService } from '@/lib/aiService';
-
-const normKey = (s: string) => (s || '').toLowerCase().trim();
-const mergeNoDup = (base: string[], add: string[]) => {
-  const seen = new Set(base.map(normKey));
-  const append = (add || []).filter(x => {
-    const k = normKey(x);
-    if (k && !seen.has(k)) { seen.add(k); return true; }
-    return false;
-  });
-  return [...base, ...append];
-};
-
-const smartSet = (current: string[], incoming: string[]) =>
-  (!current || current.length === 0) ? (incoming || []) : mergeNoDup(current, incoming || []);
+import { GhostList } from '@/components/common';
+import { useDebouncedSave } from '@/components/hooks';
+import { smartSet } from '@/utils/textSet';
 
 interface BusinessModelData {
   keyPartners: string[];
@@ -35,43 +24,6 @@ interface Step2BusinessModelProps {
   companyName?: string;
 }
 
-function AutoGrowTextarea({
-  value,
-  onChange,
-  placeholder,
-  className = "",
-}: {
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
-  placeholder?: string;
-  className?: string;
-}) {
-  const ref = useRef<HTMLTextAreaElement | null>(null);
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = "0px";
-    el.style.height = el.scrollHeight + "px";
-  }, [value]);
-
-  return (
-    <textarea
-      ref={ref}
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      rows={1}
-      className={
-        "w-full bg-transparent border-0 px-0 py-2 text-sm text-gray-900 " +
-        "placeholder-gray-400 focus:outline-none focus:ring-0 " +
-        "group-hover:bg-gray-50 rounded resize-none overflow-hidden leading-snug " +
-        className
-      }
-    />
-  );
-}
-
 const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate, companyName }) => {
   const [businessModel, setBusinessModel] = useState<BusinessModelData>({
     keyPartners: Array.isArray(data?.keyPartners) ? data.keyPartners : [],
@@ -82,166 +34,43 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate,
     channels: Array.isArray(data?.channels) ? data.channels : [],
     customerSegments: Array.isArray(data?.customerSegments) ? data.customerSegments : [],
     costStructure: Array.isArray(data?.costStructure) ? data.costStructure : [],
-    revenueStreams: Array.isArray(data?.revenueStreams) ? data.revenueStreams : []
+    revenueStreams: Array.isArray(data?.revenueStreams) ? data.revenueStreams : [],
   });
-  const [saveTimeout, setSaveTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  useEffect(() => {
-    if (hasUnsavedChanges) {
-      if (saveTimeout) {
-        clearTimeout(saveTimeout);
-      }
-      
-      const timeout = setTimeout(() => {
-        onUpdate(businessModel);
-        setHasUnsavedChanges(false);
-        toast.success('Progress saved');
-      }, 1000); // Save after 1 second of inactivity
-      
-      setSaveTimeout(timeout);
-    }
-    
-    return () => {
-      if (saveTimeout) {
-        clearTimeout(saveTimeout);
-      }
-    };
-  }, [businessModel, hasUnsavedChanges, onUpdate, saveTimeout]);
+  // Debounce save (1s) à chaque modification du modèle
+  useDebouncedSave(businessModel, (bm) => {
+    onUpdate(bm);
+    toast.success('Progress saved');
+  }, 1000);
 
   const sections = [
-    {
-      key: 'keyPartners' as keyof BusinessModelData,
-      title: 'Key Partners',
-      description: 'Who are your key partners and suppliers?',
-      tips: [
-        'Strategic alliances between competitors',
-        'Joint ventures to develop new businesses',
-        'Buyer-supplier relationships',
-        'Key suppliers and partners'
-      ],
-      gridArea: 'partners'
-    },
-    {
-      key: 'keyActivities' as keyof BusinessModelData,
-      title: 'Key Activities',
-      description: 'What key activities does your value proposition require?',
-      tips: [
-        'Production activities',
-        'Problem-solving activities',
-        'Platform/network activities',
-        'Marketing and sales activities'
-      ],
-      gridArea: 'activities'
-    },
-    {
-      key: 'keyResources' as keyof BusinessModelData,
-      title: 'Key Resources',
-      description: 'What key resources does your value proposition require?',
-      tips: [
-        'Physical resources (facilities, equipment)',
-        'Intellectual resources (patents, copyrights)',
-        'Human resources (skilled employees)',
-        'Financial resources (cash, credit lines)'
-      ],
-      gridArea: 'resources'
-    },
-    {
-      key: 'valuePropositions' as keyof BusinessModelData,
-      title: 'Value Propositions',
-      description: 'What value do you deliver to customers?',
-      tips: [
-        'Newness and innovation',
-        'Performance improvements',
-        'Customization and personalization',
-        'Cost reduction and convenience'
-      ],
-      gridArea: 'value'
-    },
-    {
-      key: 'customerRelationships' as keyof BusinessModelData,
-      title: 'Customer Relationships',
-      description: 'What type of relationship do you establish with customers?',
-      tips: [
-        'Personal assistance',
-        'Dedicated personal assistance',
-        'Self-service platforms',
-        'Automated services and communities'
-      ],
-      gridArea: 'relationships'
-    },
-    {
-      key: 'channels' as keyof BusinessModelData,
-      title: 'Channels',
-      description: 'Through which channels do you reach customers?',
-      tips: [
-        'Direct sales channels',
-        'Web sales and online platforms',
-        'Partner stores and retail',
-        'Wholesale distribution'
-      ],
-      gridArea: 'channels'
-    },
-    {
-      key: 'customerSegments' as keyof BusinessModelData,
-      title: 'Customer Segments',
-      description: 'For whom are you creating value?',
-      tips: [
-        'Mass market segments',
-        'Niche market segments',
-        'Segmented markets',
-        'Multi-sided platforms'
-      ],
-      gridArea: 'segments'
-    },
-    {
-      key: 'costStructure' as keyof BusinessModelData,
-      title: 'Cost Structure',
-      description: 'What are the most important costs in your business model?',
-      tips: [
-        'Fixed costs (salaries, rent)',
-        'Variable costs (materials, utilities)',
-        'Economies of scale',
-        'Economies of scope'
-      ],
-      gridArea: 'costs'
-    },
-    {
-      key: 'revenueStreams' as keyof BusinessModelData,
-      title: 'Revenue Streams',
-      description: 'For what value are customers willing to pay?',
-      tips: [
-        'Asset sale revenue',
-        'Usage fee revenue',
-        'Subscription fee revenue',
-        'Licensing and advertising revenue'
-      ],
-      gridArea: 'revenue'
-    }
+    { key: 'keyPartners' as const,        title: 'Key Partners',            description: 'Who are your key partners and suppliers?', tips: ['Strategic alliances between competitors','Joint ventures to develop new businesses','Buyer-supplier relationships','Key suppliers and partners'], gridArea: 'partners' },
+    { key: 'keyActivities' as const,      title: 'Key Activities',          description: 'What key activities does your value proposition require?', tips: ['Production activities','Problem-solving activities','Platform/network activities','Marketing and sales activities'], gridArea: 'activities' },
+    { key: 'keyResources' as const,       title: 'Key Resources',           description: 'What key resources does your value proposition require?', tips: ['Physical resources (facilities, equipment)','Intellectual resources (patents, copyrights)','Human resources (skilled employees)','Financial resources (cash, credit lines)'], gridArea: 'resources' },
+    { key: 'valuePropositions' as const,  title: 'Value Propositions',      description: 'What value do you deliver to customers?', tips: ['Newness and innovation','Performance improvements','Customization and personalization','Cost reduction and convenience'], gridArea: 'value' },
+    { key: 'customerRelationships' as const, title: 'Customer Relationships', description: 'What type of relationship do you establish with customers?', tips: ['Personal assistance','Dedicated personal assistance','Self-service platforms','Automated services and communities'], gridArea: 'relationships' },
+    { key: 'channels' as const,           title: 'Channels',                description: 'Through which channels do you reach customers?', tips: ['Direct sales channels','Web sales and online platforms','Partner stores and retail','Wholesale distribution'], gridArea: 'channels' },
+    { key: 'customerSegments' as const,   title: 'Customer Segments',       description: 'For whom are you creating value?', tips: ['Mass market segments','Niche market segments','Segmented markets','Multi-sided platforms'], gridArea: 'segments' },
+    { key: 'costStructure' as const,      title: 'Cost Structure',          description: 'What are the most important costs in your business model?', tips: ['Fixed costs (salaries, rent)','Variable costs (materials, utilities)','Economies of scale','Economies of scope'], gridArea: 'costs' },
+    { key: 'revenueStreams' as const,     title: 'Revenue Streams',         description: 'For what value are customers willing to pay?', tips: ['Asset sale revenue','Usage fee revenue','Subscription fee revenue','Licensing and advertising revenue'], gridArea: 'revenue' },
   ];
 
   const addItem = (sectionKey: keyof BusinessModelData) => {
-    setBusinessModel(prev => ({
-      ...prev,
-      [sectionKey]: [...prev[sectionKey], '']
-    }));
-    setHasUnsavedChanges(true);
+    setBusinessModel(prev => ({ ...prev, [sectionKey]: [...prev[sectionKey], ''] }));
   };
 
   const updateItem = (sectionKey: keyof BusinessModelData, index: number, value: string) => {
     setBusinessModel(prev => ({
       ...prev,
-      [sectionKey]: prev[sectionKey].map((item, i) => i === index ? value : item)
+      [sectionKey]: prev[sectionKey].map((item, i) => (i === index ? value : item)),
     }));
-    setHasUnsavedChanges(true);
   };
 
   const removeItem = (sectionKey: keyof BusinessModelData, index: number) => {
     setBusinessModel(prev => ({
       ...prev,
-      [sectionKey]: prev[sectionKey].filter((_, i) => i !== index)
+      [sectionKey]: prev[sectionKey].filter((_, i) => i !== index),
     }));
-    setHasUnsavedChanges(true);
   };
 
   const [aiLoading, setAiLoading] = useState(false);
@@ -253,7 +82,7 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate,
       setAiLoading(true);
       const ai = await aiService.generateBusinessModel({
         company_name: companyName,
-        existing: businessModel
+        existing: businessModel,
       });
       const next: BusinessModelData = {
         keyPartners: smartSet(businessModel.keyPartners, ai.keyPartners),
@@ -264,10 +93,9 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate,
         channels: smartSet(businessModel.channels, ai.channels),
         customerSegments: smartSet(businessModel.customerSegments, ai.customerSegments),
         costStructure: smartSet(businessModel.costStructure, ai.costStructure),
-        revenueStreams: smartSet(businessModel.revenueStreams, ai.revenueStreams)
+        revenueStreams: smartSet(businessModel.revenueStreams, ai.revenueStreams),
       };
       setBusinessModel(next);
-      setHasUnsavedChanges(true); // déclenche la sauvegarde debouncée existante
       toast.success('Pré‑remplissage IA effectué');
     } catch (e: any) {
       setAiError(e?.message || 'Une erreur est survenue');
@@ -302,18 +130,15 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate,
       </div>
 
       <div
-        className="grid gap-4 auto-rows-fr min-h-0
-                  md:grid-cols-3
-                  xl:grid-cols-5"
+        className="grid gap-4 auto-rows-fr min-h-0 md:grid-cols-3 xl:grid-cols-5"
         style={{
           gridTemplateAreas: `
             "partners activities value relationships segments"
             "partners resources  value channels      segments"
             "costs    costs      revenue revenue      revenue"
-          `
+          `,
         }}
       >
-
         {sections.map((section) => (
           <BusinessModelSection
             key={section.key}
@@ -348,14 +173,13 @@ const BusinessModelSection: React.FC<BusinessModelSectionProps> = ({
   items,
   onAddItem,
   onUpdateItem,
-  onRemoveItem
+  onRemoveItem,
 }) => {
-  const [showTips, setShowTips] = useState(false);
+  const [showTips, setShowTips] = React.useState(false);
 
   return (
     <div
-      className="relative bg-white border-2 border-gray-200 rounded-xl p-4
-                 flex flex-col overflow-hidden min-h-0"
+      className="relative bg-white border-2 border-gray-200 rounded-xl p-4 flex flex-col overflow-hidden min-h-0"
       style={{ gridArea: section.gridArea }}
     >
       {/* Header */}
@@ -372,7 +196,7 @@ const BusinessModelSection: React.FC<BusinessModelSectionProps> = ({
 
       <p className="text-xs text-gray-600 mb-2 shrink-0">{section.description}</p>
 
-      {/* Tips (optionnel) */}
+      {/* Tips */}
       {showTips && (
         <div className="mb-2 p-2 bg-blue-50 rounded-lg border shrink-0">
           <div className="flex items-center justify-between mb-1">
@@ -384,43 +208,29 @@ const BusinessModelSection: React.FC<BusinessModelSectionProps> = ({
           <ul className="text-xs text-blue-700 space-y-1">
             {section.tips.map((tip, i) => (
               <li key={i} className="flex items-start">
-                <span className="mr-1">•</span><span>{tip}</span>
+                <span className="mr-1">•</span>
+                <span>{tip}</span>
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      {/* Liste des items (scrollable) */}
+      {/* Liste d’items (scrollable) */}
       <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-        <ul className="divide-y divide-gray-200">
-          {items.map((item, index) => (
-            <li key={index} className="group flex items-start">
-              <AutoGrowTextarea
-                value={item}
-                onChange={(e) => onUpdateItem(index, e.target.value)}
-                placeholder="Ajouter un élément…"
-              />
-              <button
-                onClick={() => onRemoveItem(index)}
-                className="ml-2 shrink-0 opacity-0 group-hover:opacity-100
-                          text-red-400 hover:text-red-600 transition-opacity"
-                aria-label="Remove item"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </li>
-          ))}
-        </ul>
+        <GhostList
+          items={items}
+          onUpdate={(i, v) => onUpdateItem(i, v)}
+          onRemove={(i) => onRemoveItem(i)}
+          placeholder="Ajouter un élément…"
+        />
       </div>
 
-      {/* Footer (toujours à l’intérieur de la carte) */}
+      {/* Footer (toujours dans la carte) */}
       <div className="pt-3 border-t border-gray-100 mt-3 shrink-0">
         <button
           onClick={onAddItem}
-          className="inline-flex items-center space-x-1 px-3 py-2 text-sm
-                     text-blue-600 border border-blue-200 rounded-lg
-                     hover:bg-blue-50 transition-colors"
+          className="inline-flex items-center space-x-1 px-3 py-2 text-sm text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors"
         >
           <Plus className="w-4 h-4" />
           <span>Ajouter un élément</span>
