@@ -103,6 +103,7 @@ const Step3SWOT: React.FC<Step3Props> = ({ data, onUpdate, companyName }) => {
       const n = await aiService.getTopNews({ company_name: companyName, months: 18, limit: 3 });
       setNews(Array.isArray(n) ? n : []);
     } catch (e: any) {
+      console.error('[TopNews] UI error', e);
       setError(e?.message || 'Erreur lors de la récupération des news.');
     } finally {
       setLoadingNews(false);

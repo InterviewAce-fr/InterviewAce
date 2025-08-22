@@ -279,18 +279,35 @@ class AIService {
   // Step 3 - Top 3 News
   async getTopNews(params: { company_name?: string; months?: number; limit?: number }): Promise<TopNewsItem[]> {
     const headers = await authHeaders();
-    const r = await fetch(api(`/ai/top-news`), {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        company_name: params.company_name,
-        months: params.months ?? 18,
-        limit: params.limit ?? 3,
-      }),
-    });
+
+    // Timeout de 20s pour éviter les spinners éternels
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 20_000);
+
+    const url = api(`/ai/top-news`);
+    // Debug utile le temps de stabiliser
+    console.debug('[TopNews] POST', url, params);
+
+    let r: Response;
+    try {
+      r = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          company_name: params.company_name,
+          months: params.months ?? 18,
+          limit: params.limit ?? 3,
+        }),
+        signal: ctrl.signal,
+      });
+    } catch (err: any) {
+      clearTimeout(t);
+      console.error('[TopNews] network error', err);
+      throw new Error(err?.name === 'AbortError' ? 'Request timed out' : 'Network error');
+    }
+    clearTimeout(t);
 
     if (!r.ok) {
-      // try JSON then fallback to text
       let msg = 'Failed to fetch top news';
       try {
         const je = await r.clone().json();
@@ -298,10 +315,13 @@ class AIService {
       } catch {
         try { msg = await r.text(); } catch {}
       }
+      console.error('[TopNews] HTTP error', r.status, msg);
       throw new Error(msg);
     }
 
-    return await r.json() as TopNewsItem[];
+    const data = await r.json() as TopNewsItem[];
+    console.debug('[TopNews] OK', data);
+    return data;
   }
 }
 
