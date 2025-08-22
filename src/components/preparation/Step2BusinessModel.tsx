@@ -41,7 +41,7 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate,
   useDebouncedSave(businessModel, (bm) => {
     if (JSON.stringify(bm) !== JSON.stringify(data)) {
       onUpdate(bm);
-      toast.success('Progress saved');
+      //toast.success('Progress saved');
     }
   }, 1000);
 
@@ -98,7 +98,7 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate,
         revenueStreams: smartSet(businessModel.revenueStreams, ai.revenueStreams),
       };
       setBusinessModel(next);
-      toast.success('Pré‑remplissage IA effectué');
+      //toast.success('Pré‑remplissage IA effectué');
     } catch (e: any) {
       setAiError(e?.message || 'Une erreur est survenue');
     } finally {
