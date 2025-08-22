@@ -39,8 +39,10 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate,
 
   // Debounce save (1s) à chaque modification du modèle
   useDebouncedSave(businessModel, (bm) => {
-    onUpdate(bm);
-    toast.success('Progress saved');
+    if (JSON.stringify(bm) !== JSON.stringify(data)) {
+      onUpdate(bm);
+      toast.success('Progress saved');
+    }
   }, 1000);
 
   const sections = [
