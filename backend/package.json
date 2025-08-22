@@ -10,7 +10,7 @@
     "dev": "tsx watch src/server.ts",
     "worker": "node dist/worker.js",
     "test": "jest",
-    "heroku-postbuild": "npm ci --include=dev && npm run build"
+    "heroku-postbuild": "npm run build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.38.5",
