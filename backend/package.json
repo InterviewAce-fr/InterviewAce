@@ -34,7 +34,10 @@
     "redis": "^5.8.0",
     "stripe": "^14.9.0",
     "uuid": "^9.0.1",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "date-fns": "^2.30.0",
+    "zod": "^3.23.8"
+
   },
   "devDependencies": {
     "@types/compression": "^1.7.5",
