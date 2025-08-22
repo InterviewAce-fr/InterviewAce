@@ -588,7 +588,7 @@ export async function getTopNewsServer({
   company_name,
   months = 18,
   limit = 3,
-  callLLM, // fourni par la route (ex: ../../llm/callLLM)
+  callLLM,
 }: {
   company_name: string;
   months?: number;
@@ -599,59 +599,33 @@ export async function getTopNewsServer({
   months = Math.min(Math.max(months, 1), 36);
   limit = Math.min(Math.max(limit, 1), 5);
 
-  const since = subMonths(new Date(), months);
-  const sinceISO = since.toISOString();
+  const sinceISO = subMonths(new Date(), months).toISOString();
 
-  // 1) Pool de résultats bruts
+  // 1) Recherche
   const q = `"${company_name}" (funding OR partnership OR acquisition OR launch OR product OR earnings OR leadership OR investigation OR lawsuit OR expansion)`;
   const raw = await newsSearch({ q, sinceISO, limit: 40 });
 
-  // 2) Filtre par date ≤ months (si date connue)
+  // 2) Fenêtre temporelle
   const withinWindow = raw.filter(r => {
     if (!r.date) return true;
     const d = new Date(r.date);
     return Number.isFinite(d.getTime()) ? differenceInMonths(new Date(), d) <= months : true;
   });
 
-  // 3) Dédup title/url
+  // 3) Dédup (titre/url + near-duplicate)
   const seen = new Set<string>();
   const dedup: RawHit[] = [];
   for (const h of withinWindow) {
     const key = `${normalizeTitle(h.title)}|${h.url}`;
     if (seen.has(key)) continue;
-    // évite les near-duplicates (titres très proches)
-    const near = dedup.some(d => isNearDuplicate(d, h));
-    if (!near) {
+    if (!dedup.some(d => isNearDuplicate(d, h))) {
       seen.add(key);
       dedup.push(h);
     }
   }
+  if (dedup.length === 0) return [];
 
-  // 3bis) Si rien à traiter, on sort proprement
-  if (dedup.length === 0) {
-    return []; // évite l'appel LLM et toute erreur de parsing
-  }
-
-  // 4) Sélection via LLM: 3 thèmes différents
-  let llmOut: any;
-    try {
-      llmOut = await withTimeout(
-        callLLM(prompt, { json: true }),
-        6000,
-        'llm_timeout'
-      );
-    } catch {
-      // ✅ Fallback minimal: pas de LLM, on renvoie les items dédupliqués
-      return dedup.slice(0, limit).map(h => ({
-        title: h.title,
-        summary: h.snippet || '',
-        date: h.date || '',
-        url: h.url,
-        source: h.source || '',
-        category: undefined,
-      }));
-    }
-
+  // 4) Sélection via LLM (thèmes distincts)
   const toolInput = JSON.stringify({
     company_name,
     window_months: months,
@@ -660,45 +634,44 @@ export async function getTopNewsServer({
     need: limit,
   });
 
-  let normalized: unknown;
-  if (Array.isArray(llmOut)) {
-    normalized = { items: llmOut };
-  } else if (llmOut && typeof llmOut === 'object' && 'items' in (llmOut as any)) {
-    normalized = llmOut;
-  } else if (typeof llmOut === 'string') {
-
   const prompt = `
 You are selecting the TOP ${limit} distinct pieces of company news for interview preparation.
 Rules:
-- Each pick MUST represent a different theme (e.g., funding, product launch, partnership, legal, earnings, leadership, expansion).
+- Each pick MUST represent a different theme (funding, product launch, partnership, legal, earnings, leadership, expansion, etc.).
 - Prefer high-impact, authoritative sources (company newsroom, filings, tier-1 outlets).
 - If multiple links describe the same event, pick the most authoritative & recent one.
-
 Return STRICT JSON OBJECT:
 {
   "items": [
     { "title": "", "summary": "<=80 words, factual", "date": "ISO if known", "url": "https://...", "source": "Publisher", "category": "theme" }
   ]
 }
-
 INPUT:
 ${toolInput}
-`;
+`.trim();
 
-  const llmOut = await withTimeout(
-    callLLM(prompt, { json: true }),
-    6000,
-    'llm_timeout'
-  );
+  let llmOut: any;
+  try {
+    llmOut = await withTimeout(callLLM(prompt, { json: true }), 6000, 'llm_timeout');
+  } catch {
+    // Fallback simple
+    return dedup.slice(0, limit).map(h => ({
+      title: h.title,
+      summary: h.snippet || '',
+      date: h.date || '',
+      url: h.url,
+      source: h.source || '',
+      category: undefined,
+    }));
+  }
 
-  // Normalize: accept array or object
-  let normalized: unknown;
+  // 5) Normalisation
+  let normalized: any;
   if (Array.isArray(llmOut)) {
     normalized = { items: llmOut };
   } else if (llmOut && typeof llmOut === 'object' && 'items' in llmOut) {
     normalized = llmOut;
   } else if (typeof llmOut === 'string') {
-    // last-resort parse
     try {
       const parsed = JSON.parse(llmOut);
       normalized = Array.isArray(parsed) ? { items: parsed } : parsed;
@@ -710,18 +683,10 @@ ${toolInput}
   }
 
   const parsed = topNewsOutSchema.safeParse(normalized);
-  if (!parsed.success) {
-    throw new Error('LLM output parsing failed');
-  }
+  if (!parsed.success) throw new Error('LLM output parsing failed');
 
-  // 5) Sort & return
-  const result = parsed.data.items
+  // 6) Tri par date (desc) et tranche
+  return parsed.data.items
     .slice(0, limit)
-    .sort((a, b) => {
-      const da = new Date(a.date || 0).getTime() || 0;
-      const db = new Date(b.date || 0).getTime() || 0;
-      return db - da;
-    });
-
-  return result;
-  }
+    .sort((a, b) => (new Date(b.date || 0).getTime() || 0) - (new Date(a.date || 0).getTime() || 0));
+}
