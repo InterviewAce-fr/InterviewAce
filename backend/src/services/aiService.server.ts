@@ -1,4 +1,7 @@
 import OpenAI from 'openai';
+import { subMonths, differenceInMonths } from 'date-fns';
+import { z } from 'zod';
+
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 /* ------------------------------------------------------------------ */
@@ -385,4 +388,189 @@ Guidelines:
     whyRole:    str(parsed.whyRole)    || fallbackWhyRole,
     whyYou:     str(parsed.whyYou)     || fallbackWhyYou
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Step 3 — Top News (server)                                         */
+/* ------------------------------------------------------------------ */
+
+type RawHit = { title: string; url: string; snippet?: string; date?: string; source?: string };
+
+const topNewsOutSchema = z.array(z.object({
+  title: z.string(),
+  summary: z.string(),
+  date: z.string().optional().default(''),
+  url: z.string().url(),
+  source: z.string().optional(),
+  category: z.string().optional(),
+}));
+
+// Normalisation & dédup (titres proches)
+function normalizeTitle(s: string) {
+  return (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+}
+function isNearDuplicate(a: RawHit, b: RawHit) {
+  const na = normalizeTitle(a.title);
+  const nb = normalizeTitle(b.title);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  const shorter = na.length < nb.length ? na : nb;
+  const longer = na.length < nb.length ? nb : na;
+  return shorter.length > 20 && longer.includes(shorter);
+}
+
+// --- Provider: NewsAPI.org ---
+async function newsSearchWithNewsAPI({ q, sinceISO, limit }: { q: string; sinceISO: string; limit: number }): Promise<RawHit[]> {
+  const key = process.env.NEWSAPI_KEY;
+  if (!key) return [];
+  const from = sinceISO.slice(0, 10);
+  const url = new URL('https://newsapi.org/v2/everything');
+  url.searchParams.set('q', q);
+  url.searchParams.set('from', from);
+  url.searchParams.set('sortBy', 'publishedAt');
+  url.searchParams.set('language', 'en');
+  url.searchParams.set('pageSize', String(Math.min(Math.max(limit, 1), 100)));
+
+  const r = await fetch(url.toString(), { headers: { 'X-Api-Key': key } });
+  if (!r.ok) return [];
+  const d: any = await r.json();
+  const articles: any[] = Array.isArray(d?.articles) ? d.articles : [];
+  return articles.map(a => ({
+    title: a?.title || '',
+    url: a?.url || '',
+    snippet: a?.description || a?.content || '',
+    date: a?.publishedAt || '',
+    source: a?.source?.name || '',
+  })).filter(x => x.title && x.url);
+}
+
+// --- Provider: Bing Web Search v7 ---
+async function newsSearchWithBing({ q, sinceISO, limit }: { q: string; sinceISO: string; limit: number }): Promise<RawHit[]> {
+  const key = process.env.BING_SEARCH_V7_KEY;
+  if (!key) return [];
+  const url = new URL('https://api.bing.microsoft.com/v7.0/search');
+  url.searchParams.set('q', q);
+  url.searchParams.set('count', String(Math.min(Math.max(limit, 1), 50)));
+  url.searchParams.set('responseFilter', 'News,Webpages');
+  url.searchParams.set('mkt', 'en-US');
+
+  const r = await fetch(url.toString(), { headers: { 'Ocp-Apim-Subscription-Key': key } });
+  if (!r.ok) return [];
+  const d: any = await r.json();
+
+  const hits: RawHit[] = [];
+
+  const news = d?.news?.value ?? d?.value ?? [];
+  if (Array.isArray(news)) {
+    for (const n of news) {
+      hits.push({
+        title: n?.name || '',
+        url: n?.url || '',
+        snippet: n?.description || '',
+        date: n?.datePublished || n?.datePublishedFreshnessText || '',
+        source: n?.provider?.[0]?.name || 'Bing News',
+      });
+    }
+  }
+
+  const web = d?.webPages?.value ?? [];
+  if (Array.isArray(web)) {
+    for (const w of web) {
+      hits.push({
+        title: w?.name || '',
+        url: w?.url || '',
+        snippet: w?.snippet || '',
+        date: w?.dateLastCrawled || '',
+        source: 'Web',
+      });
+    }
+  }
+
+  return hits.filter(x => x.title && x.url);
+}
+
+// --- Sélection du provider ---
+async function newsSearch({ q, sinceISO, limit }: { q: string; sinceISO: string; limit: number }): Promise<RawHit[]> {
+  // Essaie NewsAPI d'abord (si clé), sinon Bing
+  const preferred = await newsSearchWithNewsAPI({ q, sinceISO, limit: Math.max(limit, 30) });
+  if (preferred.length) return preferred;
+
+  const fallback = await newsSearchWithBing({ q, sinceISO, limit: Math.max(limit, 30) });
+  return fallback;
+}
+
+// --- Fonction principale exportée (appelée par la route /api/ai/top-news) ---
+export async function getTopNewsServer({
+  company_name,
+  months = 18,
+  limit = 3,
+  callLLM, // fourni par la route (ex: ../../llm/callLLM)
+}: {
+  company_name: string;
+  months?: number;
+  limit?: number;
+  callLLM: (prompt: string, opts?: { json?: boolean }) => Promise<any>;
+}) {
+  if (!company_name) throw new Error('company_name is required');
+  months = Math.min(Math.max(months, 1), 36);
+  limit = Math.min(Math.max(limit, 1), 5);
+
+  const since = subMonths(new Date(), months);
+  const sinceISO = since.toISOString();
+
+  // 1) Pool de résultats bruts
+  const q = `"${company_name}" (funding OR partnership OR acquisition OR launch OR product OR earnings OR leadership OR investigation OR lawsuit OR expansion)`;
+  const raw = await newsSearch({ q, sinceISO, limit: 40 });
+
+  // 2) Filtre par date ≤ months (si date connue)
+  const withinWindow = raw.filter(r => {
+    if (!r.date) return true;
+    const d = new Date(r.date);
+    return Number.isFinite(d.getTime()) ? differenceInMonths(new Date(), d) <= months : true;
+  });
+
+  // 3) Dédup title/url
+  const dedup: RawHit[] = [];
+  for (const h of withinWindow) {
+    if (!h.url || !h.title) continue;
+    if (!dedup.some(x => x.url === h.url || isNearDuplicate(x, h))) dedup.push(h);
+  }
+
+  // 4) Sélection via LLM: 3 thèmes différents
+  const toolInput = JSON.stringify({
+    company_name,
+    window_months: months,
+    sinceISO,
+    candidates: dedup.slice(0, 40),
+    need: limit,
+  });
+
+  const prompt = `
+You are selecting the TOP ${limit} distinct pieces of company news for interview preparation.
+Rules:
+- Each pick MUST represent a different theme (e.g., funding, product launch, partnership, legal, earnings, leadership, expansion).
+- Prefer high-impact, authoritative sources (company newsroom, filings, tier-1 outlets).
+- If multiple links describe the same event, pick the most authoritative & recent one.
+Return STRICT JSON: [{ "title": "", "summary": "<=80 words, factual", "date": "ISO if known", "url": "https://...", "source": "Publisher", "category": "theme" }]
+
+INPUT:
+${toolInput}
+`;
+
+  const llmOut = await callLLM(prompt, { json: true });
+  const parsed = topNewsOutSchema.safeParse(llmOut);
+  if (!parsed.success) {
+    throw new Error('LLM output parsing failed');
+  }
+
+  // 5) Tri date desc
+  const result = parsed.data
+    .slice(0, limit)
+    .sort((a, b) => {
+      const da = new Date(a.date || 0).getTime() || 0;
+      const db = new Date(b.date || 0).getTime() || 0;
+      return db - da;
+    });
+
+  return result;
 }
