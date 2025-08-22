@@ -1,7 +1,7 @@
 // src/routes/topNews.ts
 import { Router } from "express";
-import { getTopNewsServer } from "../services/aiService.server";
-import { callLLM } from "../llm/callLLM"; // cf. fichier à créer juste après
+import { getTopNewsServer } from "../services/aiService.server"; // ⬅️ corriger ce chemin
+import { callLLM } from "../llm/callLLM";    
 
 const router = Router();
 
@@ -17,8 +17,8 @@ router.post("/top-news", async (req, res) => {
     });
     res.json(data);
   } catch (e: any) {
-    console.error("top-news error", e);
-    res.status(400).send(e?.message || "Failed to get top news");
+    // ⬇️ return JSON, not plain text
+    res.status(400).json({ error: e?.message || "Failed to get top news" });
   }
 });
 

@@ -278,7 +278,7 @@ class AIService {
 
   // Step 3 - Top 3 News
   async getTopNews(params: { company_name?: string; months?: number; limit?: number }): Promise<TopNewsItem[]> {
-    const headers = await authHeaders(); // ✅ cohérent avec les autres méthodes
+    const headers = await authHeaders();
     const r = await fetch(api(`/ai/top-news`), {
       method: 'POST',
       headers,
@@ -289,10 +289,19 @@ class AIService {
       }),
     });
 
-    const d = await r.json();
-    if (!r.ok) throw new Error(d?.error || 'Failed to fetch top news');
+    if (!r.ok) {
+      // try JSON then fallback to text
+      let msg = 'Failed to fetch top news';
+      try {
+        const je = await r.clone().json();
+        msg = je?.error || msg;
+      } catch {
+        try { msg = await r.text(); } catch {}
+      }
+      throw new Error(msg);
+    }
 
-    return d as TopNewsItem[];
+    return await r.json() as TopNewsItem[];
   }
 }
 

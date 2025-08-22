@@ -396,14 +396,16 @@ Guidelines:
 
 type RawHit = { title: string; url: string; snippet?: string; date?: string; source?: string };
 
-const topNewsOutSchema = z.array(z.object({
-  title: z.string(),
-  summary: z.string(),
-  date: z.string().optional().default(''),
-  url: z.string().url(),
-  source: z.string().optional(),
-  category: z.string().optional(),
-}));
+const topNewsOutSchema = z.object({
+  items: z.array(z.object({
+    title: z.string(),
+    summary: z.string(),
+    date: z.string().optional().default(''),
+    url: z.string().url(),
+    source: z.string().optional(),
+    category: z.string().optional(),
+  }))
+});
 
 // Normalisation & dédup (titres proches)
 function normalizeTitle(s: string) {
@@ -530,10 +532,22 @@ export async function getTopNewsServer({
   });
 
   // 3) Dédup title/url
+  const seen = new Set<string>();
   const dedup: RawHit[] = [];
   for (const h of withinWindow) {
-    if (!h.url || !h.title) continue;
-    if (!dedup.some(x => x.url === h.url || isNearDuplicate(x, h))) dedup.push(h);
+    const key = `${normalizeTitle(h.title)}|${h.url}`;
+    if (seen.has(key)) continue;
+    // évite les near-duplicates (titres très proches)
+    const near = dedup.some(d => isNearDuplicate(d, h));
+    if (!near) {
+      seen.add(key);
+      dedup.push(h);
+    }
+  }
+
+  // 3bis) Si rien à traiter, on sort proprement
+  if (dedup.length === 0) {
+    return []; // évite l'appel LLM et toute erreur de parsing
   }
 
   // 4) Sélection via LLM: 3 thèmes différents
@@ -551,20 +565,45 @@ Rules:
 - Each pick MUST represent a different theme (e.g., funding, product launch, partnership, legal, earnings, leadership, expansion).
 - Prefer high-impact, authoritative sources (company newsroom, filings, tier-1 outlets).
 - If multiple links describe the same event, pick the most authoritative & recent one.
-Return STRICT JSON: [{ "title": "", "summary": "<=80 words, factual", "date": "ISO if known", "url": "https://...", "source": "Publisher", "category": "theme" }]
+
+Return STRICT JSON OBJECT:
+{
+  "items": [
+    { "title": "", "summary": "<=80 words, factual", "date": "ISO if known", "url": "https://...", "source": "Publisher", "category": "theme" }
+  ]
+}
 
 INPUT:
 ${toolInput}
 `;
 
   const llmOut = await callLLM(prompt, { json: true });
-  const parsed = topNewsOutSchema.safeParse(llmOut);
+
+  // Normalize: accept array or object
+  let normalized: unknown;
+  if (Array.isArray(llmOut)) {
+    normalized = { items: llmOut };
+  } else if (llmOut && typeof llmOut === 'object' && 'items' in llmOut) {
+    normalized = llmOut;
+  } else if (typeof llmOut === 'string') {
+    // last-resort parse
+    try {
+      const parsed = JSON.parse(llmOut);
+      normalized = Array.isArray(parsed) ? { items: parsed } : parsed;
+    } catch {
+      throw new Error('LLM output parsing failed');
+    }
+  } else {
+    throw new Error('LLM output parsing failed');
+  }
+
+  const parsed = topNewsOutSchema.safeParse(normalized);
   if (!parsed.success) {
     throw new Error('LLM output parsing failed');
   }
 
-  // 5) Tri date desc
-  const result = parsed.data
+  // 5) Sort & return
+  const result = parsed.data.items
     .slice(0, limit)
     .sort((a, b) => {
       const da = new Date(a.date || 0).getTime() || 0;
@@ -573,4 +612,3 @@ ${toolInput}
     });
 
   return result;
-}
