@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { subMonths, differenceInMonths } from 'date-fns';
 import { z } from 'zod';
+import { XMLParser } from 'fast-xml-parser';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
@@ -446,6 +447,53 @@ async function newsSearchWithNewsAPI({ q, sinceISO, limit }: { q: string; sinceI
   })).filter(x => x.title && x.url);
 }
 
+// --- Provider: Google News RSS (gratuit, pas de clé) ---
+async function newsSearchWithGoogleNewsRSS(
+  { q, sinceISO, limit }: { q: string; sinceISO: string; limit: number }
+): Promise<RawHit[]> {
+  try {
+    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
+    const r = await fetch(url, { headers: { 'User-Agent': 'InterviewAceBot/1.0' } });
+    if (!r.ok) return [];
+    const xml = await r.text();
+
+    const parser = new XMLParser({ ignoreAttributes: false });
+    const feed = parser.parse(xml);
+    const items = feed?.rss?.channel?.item ?? [];
+    if (!Array.isArray(items)) return [];
+
+    const sinceTs = new Date(sinceISO).getTime();
+    const take = Math.max(limit * 10, 40); // on sur-prélève pour dédup & filtres
+
+    const hits: RawHit[] = items.slice(0, take).map((it: any) => {
+      const title = String(it?.title || '').trim();
+      const url = String(it?.link || '').trim();
+      const rawDesc = String(it?.description || '');
+      const snippet = rawDesc.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+      const date = String(it?.pubDate || '').trim();
+      const srcText = (it?.source?.['#text'] ?? it?.source) as string | undefined;
+
+      return {
+        title,
+        url,
+        snippet,
+        date,
+        source: srcText || 'Google News',
+      };
+    }).filter(x => x.title && x.url);
+
+    // Filtre fenêtre temporelle si la date est parseable
+    const filtered = hits.filter(h => {
+      const t = new Date(h.date || '').getTime();
+      return Number.isFinite(t) ? (t >= sinceTs) : true;
+    });
+
+    return filtered;
+  } catch {
+    return [];
+  }
+}
+
 // --- Provider: Bing Web Search v7 ---
 async function newsSearchWithBing({ q, sinceISO, limit }: { q: string; sinceISO: string; limit: number }): Promise<RawHit[]> {
   const key = process.env.BING_SEARCH_V7_KEY;
@@ -492,13 +540,21 @@ async function newsSearchWithBing({ q, sinceISO, limit }: { q: string; sinceISO:
 }
 
 // --- Sélection du provider ---
-async function newsSearch({ q, sinceISO, limit }: { q: string; sinceISO: string; limit: number }): Promise<RawHit[]> {
-  // Essaie NewsAPI d'abord (si clé), sinon Bing
+// --- Sélection du provider (avec fallback gratuit) ---
+async function newsSearch(
+  { q, sinceISO, limit }: { q: string; sinceISO: string; limit: number }
+): Promise<RawHit[]> {
+  // 1) NewsAPI si clé
   const preferred = await newsSearchWithNewsAPI({ q, sinceISO, limit: Math.max(limit, 30) });
   if (preferred.length) return preferred;
 
-  const fallback = await newsSearchWithBing({ q, sinceISO, limit: Math.max(limit, 30) });
-  return fallback;
+  // 2) Bing si clé
+  const bing = await newsSearchWithBing({ q, sinceISO, limit: Math.max(limit, 30) });
+  if (bing.length) return bing;
+
+  // 3) Google News RSS (gratuit)
+  const rss = await newsSearchWithGoogleNewsRSS({ q, sinceISO, limit: Math.max(limit, 30) });
+  return rss;
 }
 
 // --- Fonction principale exportée (appelée par la route /api/ai/top-news) ---
