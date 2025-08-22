@@ -25,7 +25,7 @@ interface Step2BusinessModelProps {
 }
 
 const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate, companyName }) => {
-  const [businessModel, setBusinessModel] = useState<BusinessModelData>({
+  const [businessModel, setBusinessModel] = useState<BusinessModelData>(() => ({
     keyPartners: Array.isArray(data?.keyPartners) ? data.keyPartners : [],
     keyActivities: Array.isArray(data?.keyActivities) ? data.keyActivities : [],
     keyResources: Array.isArray(data?.keyResources) ? data.keyResources : [],
@@ -35,7 +35,7 @@ const Step2BusinessModel: React.FC<Step2BusinessModelProps> = ({ data, onUpdate,
     customerSegments: Array.isArray(data?.customerSegments) ? data.customerSegments : [],
     costStructure: Array.isArray(data?.costStructure) ? data.costStructure : [],
     revenueStreams: Array.isArray(data?.revenueStreams) ? data.revenueStreams : [],
-  });
+  }));
 
   // Debounce save (1s) à chaque modification du modèle
   useDebouncedSave(businessModel, (bm) => {
