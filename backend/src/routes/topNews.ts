@@ -13,10 +13,9 @@ router.post("/top-news", async (req, res) => {
     const data = await getTopNewsServer({ company_name, months, limit, callLLM });
     console.log('[top-news] ok', { company_name, n: data?.length ?? 0, ms: Date.now() - t0 });
     res.json(Array.isArray(data) ? data : []);
-  } catch (e: any) {
+  } catch (e) {
     console.error('[top-news] error', e);
-    // réponse "douce" côté client pour éviter spinner infini
-    res.status(200).json([]);  // <- plutôt que 400
+    res.status(200).json([]); // réponse douce: le front affiche "No major headlines found yet."
   }
 });
 

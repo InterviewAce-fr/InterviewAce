@@ -633,6 +633,25 @@ export async function getTopNewsServer({
   }
 
   // 4) Sélection via LLM: 3 thèmes différents
+  let llmOut: any;
+    try {
+      llmOut = await withTimeout(
+        callLLM(prompt, { json: true }),
+        6000,
+        'llm_timeout'
+      );
+    } catch {
+      // ✅ Fallback minimal: pas de LLM, on renvoie les items dédupliqués
+      return dedup.slice(0, limit).map(h => ({
+        title: h.title,
+        summary: h.snippet || '',
+        date: h.date || '',
+        url: h.url,
+        source: h.source || '',
+        category: undefined,
+      }));
+    }
+
   const toolInput = JSON.stringify({
     company_name,
     window_months: months,
@@ -640,6 +659,13 @@ export async function getTopNewsServer({
     candidates: dedup.slice(0, 40),
     need: limit,
   });
+
+  let normalized: unknown;
+  if (Array.isArray(llmOut)) {
+    normalized = { items: llmOut };
+  } else if (llmOut && typeof llmOut === 'object' && 'items' in (llmOut as any)) {
+    normalized = llmOut;
+  } else if (typeof llmOut === 'string') {
 
   const prompt = `
 You are selecting the TOP ${limit} distinct pieces of company news for interview preparation.
