@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Building, ClipboardList, CheckSquare, RefreshCw, Flame, Circle } from 'lucide-react';
 import { aiService, type MatchingResultsFront } from '@/lib/aiService';
+import { AutoGrowTextarea, SectionCard } from '@/components/common';
 
 type MatchResult = {
   targetType: 'requirement' | 'responsibility';
@@ -46,14 +47,13 @@ type Step4Props = {
   };
 };
 
-// --- helpers ----------------------------------------------------
+// ---------------- helpers ----------------
 
 function toStringArray(input: any, kind: 'skills' | 'edu' | 'exp'): string[] {
   if (!Array.isArray(input)) return [];
   return input
     .map((item: any) => {
       if (typeof item === 'string') return item;
-
       if (item && typeof item === 'object') {
         if (kind === 'edu') {
           const degree = item.degree || item.title || item.program || '';
@@ -87,7 +87,6 @@ function toStringArray(input: any, kind: 'skills' | 'edu' | 'exp'): string[] {
 }
 
 function gradeBadge(grade?: 'High' | 'Moderate' | 'Low', score?: number) {
-  // petit label : Perfect (>=90), High (>=75), Moderate (>=50), Low (<50)
   const s = typeof score === 'number' ? score : -1;
   let label = 'Low';
   let cls = 'bg-red-100 text-red-700 border-red-200';
@@ -95,20 +94,16 @@ function gradeBadge(grade?: 'High' | 'Moderate' | 'Low', score?: number) {
   else if (s >= 75) { label = 'High'; cls = 'bg-green-100 text-green-700 border-green-200'; }
   else if (s >= 50) { label = 'Moderate'; cls = 'bg-amber-100 text-amber-700 border-amber-200'; }
 
-  // si score pas fourni, retomber sur grade
   if (s < 0 && grade) {
     if (grade === 'High') { label = 'High'; cls = 'bg-green-100 text-green-700 border-green-200'; }
     if (grade === 'Moderate') { label = 'Moderate'; cls = 'bg-amber-100 text-amber-700 border-amber-200'; }
     if (grade === 'Low') { label = 'Low'; cls = 'bg-red-100 text-red-700 border-red-200'; }
   }
-
   return { label, cls };
 }
 
 function formatAnswer(m: MatchResult | undefined): string {
   if (!m) return 'No direct match can be established.';
-  // phrase simple et éditable par l’utilisateur
-  // On combine skill + reasoning s’ils existent
   const parts = [];
   if (m.skill) parts.push(`Skill: ${m.skill}.`);
   if (m.reasoning) parts.push(m.reasoning);
@@ -116,7 +111,7 @@ function formatAnswer(m: MatchResult | undefined): string {
   return text || 'No direct match can be established.';
 }
 
-// ----------------------------------------------------------------
+// -------------- component ----------------
 
 const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData }) => {
   const [loading, setLoading] = useState(false);
@@ -156,7 +151,6 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData })
     return <Circle className="w-5 h-5" title="Weak match" />;
   };
 
-  // bouton activé si job + cv
   const canGenerate = useMemo(() => {
     const hasJob = (requirements.length + responsibilities.length) > 0;
     const hasCV = cvSkills.length + cvEducation.length + cvExperience.length > 0;
@@ -184,15 +178,12 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData })
 
       const res: MatchingResultsFront = await aiService.matchProfile(payload);
 
-      // Normalisation du résultat global
       const normalized: MatchingResults = {
         overallScore: res.overallScore ?? 0,
         matches: Array.isArray(res.matches) ? res.matches : [],
         distribution: res.distribution ?? { high: 0, moderate: 0, low: 0 },
       };
 
-      // --- Auto‑remplissage des réponses par meilleur match par item ----
-      // requirement -> meilleur match (score max) pour l’index
       const bestReqMatch: Record<number, MatchResult | undefined> = {};
       const bestResMatch: Record<number, MatchResult | undefined> = {};
 
@@ -209,7 +200,6 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData })
       const nextRequirementResponses = requirements.map((_, i) => formatAnswer(bestReqMatch[i]));
       const nextResponsibilityResponses = responsibilities.map((_, i) => formatAnswer(bestResMatch[i]));
 
-      // pousse dans le state (et donc dans supabase via onUpdate plus tard)
       onUpdate({
         ...data,
         matchingResults: normalized,
@@ -231,8 +221,9 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData })
     }
   };
 
+  // -------- UI --------
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header + bouton Generate */}
       <div className="flex items-start justify-between gap-4">
         <div className="text-left">
@@ -277,26 +268,24 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData })
         </div>
       </div>
 
-      {/* Deux colonnes : Requirements / Responsibilities */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* Deux colonnes propre + moderne */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 auto-rows-fr min-h-0">
         {/* Requirements */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <h3 className="text-xl font-semibold text-blue-900 mb-6 flex items-center">
-            <Building className="h-6 w-6 mr-2" />
-            Key Requirements
-          </h3>
-
+        <SectionCard
+          title={<span className="inline-flex items-center gap-2 text-gray-900"><Building className="h-5 w-5" />Key Requirements</span>}
+          className="border-t-4 border-t-blue-500"
+        >
           {requirements.length === 0 ? (
-            <p className="text-blue-600 text-sm italic">Complete Step 1 Job Analysis to see requirements</p>
+            <p className="text-gray-500 text-sm italic">Complete Step 1 Job Analysis to see requirements</p>
           ) : (
-            <div className="space-y-4">
+            <ul className="space-y-4">
               {requirements.map((req, idx) => {
                 const m = data.matchingResults?.matches.find(
                   (x) => x.targetType === 'requirement' && x.targetIndex === idx
                 );
                 const badge = gradeBadge(m?.grade, m?.score);
                 return (
-                  <div key={idx} className="bg-white rounded-lg border border-blue-200 p-4 relative">
+                  <li key={idx} className="border rounded-lg p-4 relative">
                     {/* badge score */}
                     <div
                       className={`absolute top-3 right-3 text-xs border px-2 py-0.5 rounded-full ${badge.cls}`}
@@ -305,9 +294,9 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData })
                       {m ? `${badge.label}` : 'No match'}
                     </div>
 
-                    <div className="text-gray-800 text-sm">{req}</div>
-                    <div className="mt-3">
-                      <textarea
+                    <div className="text-gray-900 text-sm font-medium pr-20">{req}</div>
+                    <div className="mt-2">
+                      <AutoGrowTextarea
                         value={data.requirementResponses?.[idx] ?? ''}
                         onChange={(e) => {
                           const base = data.requirementResponses ?? Array(requirements.length).fill('');
@@ -320,36 +309,32 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData })
                           onUpdate({ ...data, requirementResponses: next });
                         }}
                         placeholder="Explain briefly how your education/experience fits this requirement…"
-                        rows={3}
-                        className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        className="border border-gray-200 rounded px-2"
                       />
                     </div>
-                  </div>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           )}
-        </div>
+        </SectionCard>
 
         {/* Responsibilities */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <h3 className="text-xl font-semibold text-blue-900 mb-6 flex items-center">
-            <ClipboardList className="h-6 w-6 mr-2" />
-            Key Responsibilities
-          </h3>
-
+        <SectionCard
+          title={<span className="inline-flex items-center gap-2 text-gray-900"><ClipboardList className="h-5 w-5" />Key Responsibilities</span>}
+          className="border-t-4 border-t-emerald-500"
+        >
           {responsibilities.length === 0 ? (
-            <p className="text-blue-600 text-sm italic">Complete Step 1 Job Analysis to see responsibilities</p>
+            <p className="text-gray-500 text-sm italic">Complete Step 1 Job Analysis to see responsibilities</p>
           ) : (
-            <div className="space-y-4">
+            <ul className="space-y-4">
               {responsibilities.map((res, idx) => {
                 const m = data.matchingResults?.matches.find(
                   (x) => x.targetType === 'responsibility' && x.targetIndex === idx
                 );
                 const badge = gradeBadge(m?.grade, m?.score);
                 return (
-                  <div key={idx} className="bg-white rounded-lg border border-blue-200 p-4 relative">
-                    {/* badge score */}
+                  <li key={idx} className="border rounded-lg p-4 relative">
                     <div
                       className={`absolute top-3 right-3 text-xs border px-2 py-0.5 rounded-full ${badge.cls}`}
                       title={m ? `${badge.label} • ${m.score ?? '-'} / 100` : 'No match'}
@@ -357,9 +342,9 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData })
                       {m ? `${badge.label}` : 'No match'}
                     </div>
 
-                    <div className="text-gray-800 text-sm">{res}</div>
-                    <div className="mt-3">
-                      <textarea
+                    <div className="text-gray-900 text-sm font-medium pr-20">{res}</div>
+                    <div className="mt-2">
+                      <AutoGrowTextarea
                         value={data.responsibilityResponses?.[idx] ?? ''}
                         onChange={(e) => {
                           const base = data.responsibilityResponses ?? Array(responsibilities.length).fill('');
@@ -372,16 +357,15 @@ const Step4Profile: React.FC<Step4Props> = ({ data, onUpdate, jobData, cvData })
                           onUpdate({ ...data, responsibilityResponses: next });
                         }}
                         placeholder="Give a measurable example proving you can own this responsibility…"
-                        rows={3}
-                        className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        className="border border-gray-200 rounded px-2"
                       />
                     </div>
-                  </div>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           )}
-        </div>
+        </SectionCard>
       </div>
 
       {/* AI Match Results */}
