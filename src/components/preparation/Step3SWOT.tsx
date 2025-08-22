@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { aiService } from '@/lib/aiService';
+import { GhostList, SectionCard } from '@/components/common';
+import { useDebouncedSave } from '@/components/hooks';
+import { smartSet } from '@/utils/textSet';
 
 interface Step3Data {
   strengths: string[];
@@ -14,45 +17,72 @@ interface Step3Props {
   companyName?: string;
 }
 
-const Step3SWOT: React.FC<Step3Props> = ({ data, onUpdate, companyName }) => {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+type Key = keyof Step3Data;
 
-  const normalizedData: Step3Data = {
+const QUADRANTS: Array<{
+  key: Key;
+  title: string;
+  accent: string;      // couleur de l’accent (border-top)
+  dot: string;         // couleur du petit badge
+  placeholder: string;
+  emoji: string;
+}> = [
+  { key: 'strengths',     title: 'Strengths',     accent: 'border-t-green-500',  dot: 'bg-green-500',  placeholder: 'Add a strength…',     emoji: '💪' },
+  { key: 'weaknesses',    title: 'Weaknesses',    accent: 'border-t-rose-500',   dot: 'bg-rose-500',   placeholder: 'Add a weakness…',     emoji: '🧩' },
+  { key: 'opportunities', title: 'Opportunities', accent: 'border-t-blue-500',   dot: 'bg-blue-500',   placeholder: 'Add an opportunity…', emoji: '🚀' },
+  { key: 'threats',       title: 'Threats',       accent: 'border-t-amber-500',  dot: 'bg-amber-500',  placeholder: 'Add a threat…',       emoji: '⚠️' },
+];
+
+const Step3SWOT: React.FC<Step3Props> = ({ data, onUpdate, companyName }) => {
+  // État local normalisé (évite de muter props directement)
+  const [swot, setSwot] = useState<Step3Data>({
     strengths: Array.isArray(data?.strengths) ? data.strengths : [],
     weaknesses: Array.isArray(data?.weaknesses) ? data.weaknesses : [],
     opportunities: Array.isArray(data?.opportunities) ? data.opportunities : [],
-    threats: Array.isArray(data?.threats) ? data.threats : []
-  };
+    threats: Array.isArray(data?.threats) ? data.threats : [],
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const normKey = (s: string) => s.toLowerCase().trim();
-  const mergeNoDup = (base: string[], add: string[]) => {
-    const seen = new Set(base.map(normKey));
-    const append = add.filter(x => {
-      const k = normKey(x);
-      if (k && !seen.has(k)) { seen.add(k); return true; }
-      return false;
+  // Si data change (navigate back, load), on resynchronise
+  useEffect(() => {
+    setSwot({
+      strengths: Array.isArray(data?.strengths) ? data.strengths : [],
+      weaknesses: Array.isArray(data?.weaknesses) ? data.weaknesses : [],
+      opportunities: Array.isArray(data?.opportunities) ? data.opportunities : [],
+      threats: Array.isArray(data?.threats) ? data.threats : [],
     });
-    return [...base, ...append];
-  };
+  }, [data]);
 
-  const smartSet = (current: string[], incoming: string[]) => {
-    if (!current || current.length === 0) return incoming;
-    return mergeNoDup(current, incoming);
-  };
+  // Sauvegarde debouncée (1s) à chaque modif
+  useDebouncedSave(swot, (v) => onUpdate(v), 1000);
+
+  const addItem = (k: Key) =>
+    setSwot((prev) => ({ ...prev, [k]: [...prev[k], ''] }));
+
+  const updateItem = (k: Key, i: number, v: string) =>
+    setSwot((prev) => ({
+      ...prev,
+      [k]: prev[k].map((it, idx) => (idx === i ? v : it)),
+    }));
+
+  const removeItem = (k: Key, i: number) =>
+    setSwot((prev) => ({
+      ...prev,
+      [k]: prev[k].filter((_, idx) => idx !== i),
+    }));
 
   const handleGenerate = async () => {
     try {
       setError(null);
       setLoading(true);
-      const existing = normalizedData; // on envoie le déjà-saisi pour meilleure complétion
-      const swot = await aiService.generateSWOT({ company_name: companyName, existing });
-      onUpdate({
-        strengths: smartSet(normalizedData.strengths, swot.strengths),
-        weaknesses: smartSet(normalizedData.weaknesses, swot.weaknesses),
-        opportunities: smartSet(normalizedData.opportunities, swot.opportunities),
-        threats: smartSet(normalizedData.threats, swot.threats)
-      });
+      const ai = await aiService.generateSWOT({ company_name: companyName, existing: swot });
+      setSwot((prev) => ({
+        strengths:     smartSet(prev.strengths,     ai.strengths),
+        weaknesses:    smartSet(prev.weaknesses,    ai.weaknesses),
+        opportunities: smartSet(prev.opportunities, ai.opportunities),
+        threats:       smartSet(prev.threats,       ai.threats),
+      }));
     } catch (e: any) {
       setError(e?.message || 'Une erreur est survenue.');
     } finally {
@@ -60,66 +90,15 @@ const Step3SWOT: React.FC<Step3Props> = ({ data, onUpdate, companyName }) => {
     }
   };
 
-  const handleItemChange = (category: keyof Step3Data, index: number, value: string) => {
-    const newData = { ...normalizedData };
-    newData[category][index] = value;
-    onUpdate(newData);
-  };
-
-  const addItem = (category: keyof Step3Data) => {
-    const newData = { ...normalizedData };
-    newData[category] = [...newData[category], ''];
-    onUpdate(newData);
-  };
-
-  const removeItem = (category: keyof Step3Data, index: number) => {
-    const newData = { ...normalizedData };
-    newData[category] = newData[category].filter((_, i) => i !== index);
-    onUpdate(newData);
-  };
-
-  const renderSection = (
-    title: string,
-    category: keyof Step3Data,
-    bgColor: string,
-    borderColor: string
-  ) => (
-    <div className={`${bgColor} ${borderColor} border-2 rounded-lg p-6`}>
-      <h3 className="text-xl font-semibold mb-4 text-gray-800">{title}</h3>
-      <div className="space-y-3">
-        {normalizedData[category].map((item, index) => (
-          <div key={index} className="flex gap-2">
-            <input
-              type="text"
-              value={item}
-              onChange={(e) => handleItemChange(category, index, e.target.value)}
-              placeholder={`Enter ${title.toLowerCase().slice(0, -1)}...`}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-              onClick={() => removeItem(category, index)}
-              className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
-            >
-              ×
-            </button>
-          </div>
-        ))}
-        <button
-          onClick={() => addItem(category)}
-          className="w-full px-4 py-2 border-2 border-dashed border-gray-300 rounded-md text-gray-600 hover:border-gray-400 hover:text-gray-700 transition-colors"
-        >
-          + Add {title.slice(0, -1)}
-        </button>
-      </div>
-    </div>
-  );
-
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="max-w-7xl mx-auto p-6">
+      {/* Header */}
       <div className="flex items-start justify-between mb-8">
         <div className="text-left">
-          <h2 className="text-3xl font-bold text-gray-800 mb-2">Company Strategy</h2>
-          <p className="text-gray-600">Analyze the company's strategic position to understand how you can contribute to their success.</p>
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">Company Strategy</h2>
+          <p className="text-gray-600">
+            Analyze the company’s strategic position so you can tailor your impact.
+          </p>
         </div>
         <div className="flex flex-col items-end gap-2">
           <button
@@ -139,20 +118,45 @@ const Step3SWOT: React.FC<Step3Props> = ({ data, onUpdate, companyName }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {renderSection('Strengths', 'strengths', 'bg-green-50', 'border-green-200')}
-        {renderSection('Weaknesses', 'weaknesses', 'bg-red-50', 'border-red-200')}
-        {renderSection('Opportunities', 'opportunities', 'bg-blue-50', 'border-blue-200')}
-        {renderSection('Threats', 'threats', 'bg-yellow-50', 'border-yellow-200')}
+      {/* Quadrants SWOT */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-fr min-h-0">
+        {QUADRANTS.map(({ key, title, accent, dot, placeholder, emoji }) => (
+          <SectionCard
+            key={key}
+            title={
+              <span className="inline-flex items-center gap-2">
+                <span className={`inline-block w-2.5 h-2.5 rounded-full ${dot}`} />
+                <span className="text-gray-900">{emoji} {title}</span>
+              </span>
+            }
+            className={`border-t-4 ${accent}`}
+            action={
+              <button
+                onClick={() => addItem(key)}
+                className="inline-flex items-center px-3 py-1 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"
+              >
+                + Add
+              </button>
+            }
+          >
+            <GhostList
+              items={swot[key]}
+              onUpdate={(i, v) => updateItem(key, i, v)}
+              onRemove={(i) => removeItem(key, i)}
+              placeholder={placeholder}
+            />
+          </SectionCard>
+        ))}
       </div>
 
-      <div className="mt-8 p-4 bg-gray-50 rounded-lg">
-        <h4 className="font-semibold text-gray-800 mb-2">💡 Tips for Company Strategy Analysis:</h4>
+      {/* Tips */}
+      <div className="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+        <h4 className="font-semibold text-gray-800 mb-2">💡 Tips for Company Strategy Analysis</h4>
         <ul className="text-sm text-gray-600 space-y-1">
-          <li>• Research recent company news, financial reports, and market position</li>
-          <li>• Consider industry trends and competitive landscape</li>
-          <li>• Think about how your skills can address their weaknesses or leverage their strengths</li>
-          <li>• Identify opportunities where you can make an immediate impact</li>
+          <li>• Check recent company news, filings, and KPIs.</li>
+          <li>• Map industry trends & competitors to each SWOT quadrant.</li>
+          <li>• Tie your skills to mitigate weaknesses or amplify strengths.</li>
+          <li>• Spot quick wins where you can drive immediate impact.</li>
         </ul>
       </div>
     </div>
