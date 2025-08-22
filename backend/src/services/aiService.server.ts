@@ -12,6 +12,16 @@ const clamp = (n: number, min = 0, max = 100) => Math.max(min, Math.min(max, n))
 const toInt = (n: any) => Number.isFinite(Number(n)) ? Math.round(Number(n)) : 0;
 
 /* ------------------------------------------------------------------ */
+/* Common helper                                                      */
+/* ------------------------------------------------------------------ */
+function withTimeout<T>(p: Promise<T>, ms: number, label = 'timeout'): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(label)), ms);
+    p.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* Step 1 — CV parsing                                                */
 /* ------------------------------------------------------------------ */
 export async function analyzeCVFromText(cvText: string) {
@@ -453,7 +463,12 @@ async function newsSearchWithGoogleNewsRSS(
 ): Promise<RawHit[]> {
   try {
     const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
-    const r = await fetch(url, { headers: { 'User-Agent': 'InterviewAceBot/1.0' } });
+    const fetchP = fetch(url, {
+      headers: { 'User-Agent': 'InterviewAceBot/1.0', 'Accept': 'application/rss+xml,text/xml,*/*' },
+    });
+
+    // ⏱️ coupe court si Google News est lent
+    const r = await withTimeout(fetchP, 4000, 'rss_fetch_timeout');
     if (!r.ok) return [];
     const xml = await r.text();
 
@@ -463,7 +478,7 @@ async function newsSearchWithGoogleNewsRSS(
     if (!Array.isArray(items)) return [];
 
     const sinceTs = new Date(sinceISO).getTime();
-    const take = Math.max(limit * 10, 40); // on sur-prélève pour dédup & filtres
+    const take = Math.max(limit * 10, 40);
 
     const hits: RawHit[] = items.slice(0, take).map((it: any) => {
       const title = String(it?.title || '').trim();
@@ -472,23 +487,14 @@ async function newsSearchWithGoogleNewsRSS(
       const snippet = rawDesc.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
       const date = String(it?.pubDate || '').trim();
       const srcText = (it?.source?.['#text'] ?? it?.source) as string | undefined;
-
-      return {
-        title,
-        url,
-        snippet,
-        date,
-        source: srcText || 'Google News',
-      };
+      return { title, url, snippet, date, source: srcText || 'Google News' };
     }).filter(x => x.title && x.url);
 
-    // Filtre fenêtre temporelle si la date est parseable
-    const filtered = hits.filter(h => {
+    // filtre fenêtre temporelle
+    return hits.filter(h => {
       const t = new Date(h.date || '').getTime();
       return Number.isFinite(t) ? (t >= sinceTs) : true;
     });
-
-    return filtered;
   } catch {
     return [];
   }
@@ -544,17 +550,37 @@ async function newsSearchWithBing({ q, sinceISO, limit }: { q: string; sinceISO:
 async function newsSearch(
   { q, sinceISO, limit }: { q: string; sinceISO: string; limit: number }
 ): Promise<RawHit[]> {
-  // 1) NewsAPI si clé
-  const preferred = await newsSearchWithNewsAPI({ q, sinceISO, limit: Math.max(limit, 30) });
-  if (preferred.length) return preferred;
+  const cap = Math.max(limit, 30);
 
-  // 2) Bing si clé
-  const bing = await newsSearchWithBing({ q, sinceISO, limit: Math.max(limit, 30) });
-  if (bing.length) return bing;
+  // lance tout en parallèle, chacun avec son timeout dédié
+  const tasks = [
+    (async () => {
+      try { return await withTimeout(newsSearchWithNewsAPI({ q, sinceISO, limit: cap }), 3500, 'newsapi_timeout'); }
+      catch { return []; }
+    })(),
+    (async () => {
+      try { return await withTimeout(newsSearchWithBing({ q, sinceISO, limit: cap }), 3500, 'bing_timeout'); }
+      catch { return []; }
+    })(),
+    (async () => {
+      try { return await newsSearchWithGoogleNewsRSS({ q, sinceISO, limit: cap }); } // déjà time-outé dedans
+      catch { return []; }
+    })(),
+  ];
 
-  // 3) Google News RSS (gratuit)
-  const rss = await newsSearchWithGoogleNewsRSS({ q, sinceISO, limit: Math.max(limit, 30) });
-  return rss;
+  const settled = await Promise.allSettled(tasks);
+  // prends le premier non-vide dans l’ordre: NewsAPI, Bing, RSS
+  for (const s of settled) {
+    if (s.status === 'fulfilled' && Array.isArray(s.value) && s.value.length) {
+      return s.value;
+    }
+  }
+  // sinon concatène tout ce qui a répondu (même vide) — au cas où
+  const all: RawHit[] = [];
+  for (const s of settled) {
+    if (s.status === 'fulfilled' && Array.isArray(s.value)) all.push(...s.value);
+  }
+  return all;
 }
 
 // --- Fonction principale exportée (appelée par la route /api/ai/top-news) ---
@@ -633,7 +659,11 @@ INPUT:
 ${toolInput}
 `;
 
-  const llmOut = await callLLM(prompt, { json: true });
+  const llmOut = await withTimeout(
+    callLLM(prompt, { json: true }),
+    6000,
+    'llm_timeout'
+  );
 
   // Normalize: accept array or object
   let normalized: unknown;
