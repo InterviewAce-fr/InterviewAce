@@ -33,12 +33,32 @@ function registerHelpers() {
   Handlebars.registerHelper("hasContent", (v: any) => hasContent(v));
 }
 
+function findExisting(paths: string[]): string | null {
+  for (const p of paths) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {}
+  }
+  return null;
+}
+
 function templatePath(): string {
-  const distPath = path.join(__dirname, "../templates/report.handlebars");
-  if (fs.existsSync(distPath)) return distPath;
-  const devPath = path.join(__dirname, "../../src/templates/report.handlebars");
-  if (fs.existsSync(devPath)) return devPath;
-  return path.join(process.cwd(), "src", "templates", "report.handlebars");
+  // On cherche D'ABORD report-template.html, puis report.handlebars (dist puis src)
+  const candidates = [
+    path.join(__dirname, "../templates/report-template.html"),
+    path.join(__dirname, "../templates/report.handlebars"),
+    path.join(__dirname, "../../src/templates/report-template.html"),
+    path.join(__dirname, "../../src/templates/report.handlebars"),
+    path.join(process.cwd(), "src", "templates", "report-template.html"),
+    path.join(process.cwd(), "src", "templates", "report.handlebars"),
+  ];
+  const found = findExisting(candidates);
+  if (!found) {
+    throw new Error(
+      "Template introuvable: place `report-template.html` ou `report.handlebars` dans src/templates"
+    );
+  }
+  return found;
 }
 
 function loadTemplate(): Handlebars.TemplateDelegate {
@@ -58,7 +78,12 @@ export function renderReport(data: any): string {
     isPremium: !!data?.isPremium,
     ...data,
   };
-  return tpl(model);
+  const html = tpl(model);
+  // petit log utile pour debug Heroku
+  try {
+    console.log(`[pdfService] html length = ${html?.length ?? 0}`);
+  } catch {}
+  return html;
 }
 
 export async function generatePDFReport(
