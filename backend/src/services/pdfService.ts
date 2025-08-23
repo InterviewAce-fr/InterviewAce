@@ -1,11 +1,10 @@
+// src/services/pdfService.ts
 import fs from 'fs';
 import path from 'path';
 import Handlebars from 'handlebars';
 import dayjs from 'dayjs';
-// importe ta fonction qui convertit de l'HTML vers un buffer PDF (Puppeteer/wkhtmltopdf)
 import { createPDFBufferFromHTML } from './pdfEngine';
 
-// --- Helpers Handlebars partagés entre HTML preview et PDF ---
 Handlebars.registerHelper('hasContent', (obj: any) => {
   if (!obj) return false;
   if (Array.isArray(obj)) return obj.length > 0;
@@ -13,28 +12,36 @@ Handlebars.registerHelper('hasContent', (obj: any) => {
   return !!obj;
 });
 
-type CompileCtx = {
-  compiled?: HandlebarsTemplateDelegate<any>;
-};
-const templateCache: CompileCtx = {};
+let compiledTemplate: Handlebars.TemplateDelegate | null = null;
 
-const getTemplate = () => {
-  if (!templateCache.compiled) {
-    const tplPath = path.join(__dirname, '../templates/report-template.html');
-    const source = fs.readFileSync(tplPath, 'utf8');
-    templateCache.compiled = Handlebars.compile(source, { noEscape: true });
+function resolveTemplatePath(): string {
+  // 1) chemin dans dist (prod)
+  const distPath = path.join(__dirname, '../templates/report-template.html');
+  if (fs.existsSync(distPath)) return distPath;
+
+  // 2) chemin dans src (dev)
+  const srcPath = path.join(process.cwd(), 'src/templates/report-template.html');
+  if (fs.existsSync(srcPath)) return srcPath;
+
+  // 3) fallback relatif (rare)
+  return path.resolve(__dirname, '../../src/templates/report-template.html');
+}
+
+function getCompiledTemplate() {
+  if (!compiledTemplate) {
+    const tpl = fs.readFileSync(resolveTemplatePath(), 'utf8');
+    compiledTemplate = Handlebars.compile(tpl, { noEscape: true });
   }
-  return templateCache.compiled!;
-};
+  return compiledTemplate!;
+}
 
 export const generateReportHTML = async (
   preparationData: any,
   isPremium: boolean,
   opts?: { showGenerateButton?: boolean; frontendUrl?: string }
 ) => {
-  const compiled = getTemplate();
+  const compiled = getCompiledTemplate();
 
-  // Valeurs sûres
   const safeData = {
     ...preparationData,
     title: preparationData?.title || 'Interview Preparation',
@@ -49,7 +56,7 @@ export const generateReportHTML = async (
 
   const html = compiled({
     ...safeData,
-    isPremium,
+    isPremium: !!isPremium,
     generatedAt: dayjs().format('YYYY-MM-DD HH:mm'),
     FRONTEND_URL: opts?.frontendUrl || process.env.FRONTEND_URL,
     showGenerateButton: !!opts?.showGenerateButton,
@@ -59,10 +66,9 @@ export const generateReportHTML = async (
 };
 
 export const generatePDFReport = async (preparationData: any, isPremium: boolean) => {
-  const html = await generateReportHTML(preparationData, isPremium, {
-    showGenerateButton: false, // bouton masqué dans la version PDF
+  const html = await generateReportHTML(preparationData, !!isPremium, {
+    showGenerateButton: false,
     frontendUrl: process.env.FRONTEND_URL,
   });
-  const pdfBuffer = await createPDFBufferFromHTML(html);
-  return pdfBuffer;
+  return createPDFBufferFromHTML(html);
 };

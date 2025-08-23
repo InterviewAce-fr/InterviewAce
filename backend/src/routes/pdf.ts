@@ -1,3 +1,4 @@
+// src/routes/pdf.ts
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { validateBody } from '../middleware/validation';
@@ -8,7 +9,6 @@ import Joi from 'joi';
 
 const router = express.Router();
 
-// Validation schema for PDF generation
 const generatePDFSchema = Joi.object({
   preparationData: Joi.object({
     id: Joi.string().required(),
@@ -23,7 +23,6 @@ const generatePDFSchema = Joi.object({
   }).required()
 });
 
-// Schema for HTML preview
 const generateHTMLSchema = Joi.object({
   preparationData: Joi.object({
     id: Joi.string().required(),
@@ -39,7 +38,7 @@ const generateHTMLSchema = Joi.object({
   showGenerateButton: Joi.boolean().default(true)
 });
 
-// Generate HTML (preview)
+// HTML preview
 router.post(
   '/html',
   authenticateToken,
@@ -47,7 +46,8 @@ router.post(
   async (req: AuthRequest, res) => {
     try {
       const { preparationData, showGenerateButton } = req.body;
-      const html = await generateReportHTML(preparationData, !!req.user!.is_premium, {
+      const isPremium = Boolean(req.user && req.user.is_premium); // <— cast sûr
+      const html = await generateReportHTML(preparationData, isPremium, {
         showGenerateButton,
         frontendUrl: process.env.FRONTEND_URL,
       });
@@ -60,7 +60,7 @@ router.post(
   }
 );
 
-// Generate PDF report
+// Generate PDF
 router.post('/generate',
   authenticateToken,
   validateBody(generatePDFSchema),
@@ -68,11 +68,10 @@ router.post('/generate',
     try {
       const { preparationData } = req.body;
       const userId = req.user!.id;
-      const isPremium = req.user!.is_premium;
+      const isPremium = Boolean(req.user && req.user.is_premium); // <— cast sûr
 
       logger.info(`PDF generation requested by user ${userId}`);
 
-      // Premium -> queue
       if (isPremium) {
         const job = await pdfQueue.add('generate-report', {
           preparationData,
@@ -87,7 +86,6 @@ router.post('/generate',
         });
       }
 
-      // Free -> direct buffer
       const pdfBuffer = await generatePDFReport(preparationData, isPremium);
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${preparationData.title.replace(/[^a-zA-Z0-9]/g, '-')}.pdf"`);
@@ -103,15 +101,12 @@ router.post('/generate',
   }
 );
 
-// Check PDF generation status (for premium users)
+// Status
 router.get('/status/:jobId', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { jobId } = req.params;
     const job = await pdfQueue.getJob(jobId);
-
-    if (!job) {
-      return res.status(404).json({ error: 'Job not found' });
-    }
+    if (!job) return res.status(404).json({ error: 'Job not found' });
 
     const state = await job.getState();
     const progress = job.progress();
@@ -124,7 +119,6 @@ router.get('/status/:jobId', authenticateToken, async (req: AuthRequest, res) =>
       processedAt: job.processedOn,
       finishedAt: job.finishedOn
     });
-
   } catch (error) {
     logger.error('PDF status check error:', error);
     res.status(500).json({ error: 'Failed to check PDF status' });
