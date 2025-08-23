@@ -2,7 +2,6 @@ import fs from "fs";
 import path from "path";
 import Handlebars from "handlebars";
 import dayjs from "dayjs";
-// ⚠️ on suppose que ton pdfEngine expose une fonction htmlToPDF(html, opts?)
 import { htmlToPDF } from "./pdfEngine";
 
 let compiled: Handlebars.TemplateDelegate | null = null;
@@ -25,47 +24,102 @@ function registerHelpers() {
   Handlebars.registerHelper("notEmpty", (v: any) =>
     Array.isArray(v) ? v.length > 0 : !!v
   );
+
+  // 👇 nécessaire pour ton template
+  Handlebars.registerHelper("hasContent", (v: any) => {
+    if (v == null) return false;
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === "object") return Object.keys(v).length > 0;
+    if (typeof v === "string") return v.trim().length > 0;
+    return !!v;
+  });
 }
 
-function templatePath(): string {
-  // En prod (dist)
-  const distPath = path.join(__dirname, "../templates/report.handlebars");
-  if (fs.existsSync(distPath)) return distPath;
-  // En dev (src)
-  const devPath = path.join(__dirname, "../../src/templates/report.handlebars");
-  if (fs.existsSync(devPath)) return devPath;
-
-  // Dernier recours : même dossier (utile si empaqueté autrement)
-  return path.join(process.cwd(), "src", "templates", "report.handlebars");
+function findTemplateFile(): string {
+  const tryPaths = [
+    // prod (dist)
+    path.join(__dirname, "../templates/report.handlebars"),
+    path.join(__dirname, "../templates/report-template.html"),
+    // dev (src)
+    path.join(__dirname, "../../src/templates/report.handlebars"),
+    path.join(__dirname, "../../src/templates/report-template.html"),
+    // fallback (cwd)
+    path.join(process.cwd(), "src", "templates", "report.handlebars"),
+    path.join(process.cwd(), "src", "templates", "report-template.html"),
+  ];
+  for (const p of tryPaths) {
+    if (fs.existsSync(p)) return p;
+  }
+  // dernier recours -> lève une erreur explicite
+  throw new Error(
+    "Template not found. Expected src/templates/report.handlebars (ou report-template.html)."
+  );
 }
 
 function loadTemplate(): Handlebars.TemplateDelegate {
   if (compiled) return compiled;
   registerHelpers();
 
-  const filePath = templatePath();
+  const filePath = findTemplateFile();
   const raw = fs.readFileSync(filePath, "utf-8");
   compiled = Handlebars.compile(raw, { noEscape: true });
-
   return compiled;
+}
+
+/** Aplatis l'entrée si elle vient sous la forme { preparationData: {...}, ... } */
+function normalizeModel(input: any): any {
+  if (input && typeof input === "object" && input.preparationData) {
+    const { preparationData, ...rest } = input;
+    // priorité aux champs de preparationData
+    const merged = { ...rest, ...preparationData };
+    // conserve quelques flags/props utiles
+    if (rest.showGenerateButton !== undefined) {
+      (merged as any).showGenerateButton = rest.showGenerateButton;
+    }
+    if (rest.isPremium !== undefined) {
+      (merged as any).isPremium = rest.isPremium;
+    }
+    // titre par défaut si absent
+    if (!merged.title) {
+      const jt = merged?.step_1_data?.job_title?.trim?.();
+      const cn = merged?.step_1_data?.company_name?.trim?.();
+      (merged as any).title = jt && cn ? `${jt} at ${cn}` : "Interview Preparation";
+    }
+    return merged;
+  }
+  // titre par défaut si jamais
+  if (input && !input.title) {
+    const jt = input?.step_1_data?.job_title?.trim?.();
+    const cn = input?.step_1_data?.company_name?.trim?.();
+    input.title = jt && cn ? `${jt} at ${cn}` : "Interview Preparation";
+  }
+  return input;
 }
 
 /** Rendu HTML du rapport */
 export function renderReport(data: any): string {
   const tpl = loadTemplate();
-  const model = {
+
+  const FRONTEND_URL =
+    process.env.FRONTEND_URL ||
+    process.env.WEBSITE_URL ||
+    "https://startling-salamander-f45eec.netlify.app";
+
+  const model = normalizeModel({
     generatedAt: new Date().toISOString(),
+    FRONTEND_URL,
     ...data,
-  };
+  });
+
   return tpl(model);
 }
 
-/** Génération PDF (signature tolère un 2e arg optionnel pour compat) */
+/** Génération PDF */
 export async function generatePDFReport(
   data: any,
-  _opts?: { landscape?: boolean }
+  opts?: { landscape?: boolean }
 ): Promise<Buffer> {
   const html = renderReport(data);
-  const pdf = await htmlToPDF(html, _opts);
+  const pdf = await htmlToPDF(html, opts);
   return pdf;
 }

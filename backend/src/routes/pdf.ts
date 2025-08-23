@@ -9,78 +9,61 @@ function decodeBase64Query(q?: string) {
     const b64 = q.replace(/ /g, "+");
     const json = Buffer.from(b64, "base64").toString("utf8");
     return JSON.parse(json);
-  } catch (e) {
+  } catch {
     return undefined;
   }
 }
 
 function sampleData() {
+  // Données de démo minimales pour que le template affiche du contenu
   return {
-    generatedAt: new Date().toISOString(),
-    candidate: { name: "Jane Doe", email: "jane@doe.io" },
-    role: { title: "Senior Product Manager" },
-    company: { name: "Acme Corp", website: "https://acme.example" },
-
-    strategy: {
-      businessModel: {
-        summary: "SaaS B2B (abonnement mensuel)",
-        revenueStreams: ["Pro / Enterprise", "Add-ons"],
-        pricingNotes: "ARPU ~120 €, churn 2.1%",
-      },
-      marketNews: [
-        { title: "Acme lève 20 M€ (Série B)", source: "TechCrunch", date: "2025-08-01" },
-        { title: "Partenariat Acme x BigCo", source: "Les Échos", date: "2025-08-17" },
-      ],
-      positioning: {
-        strengths: ["Brand", "Marge brute +80%"],
-        weaknesses: ["Pricing confus sur add-ons"],
-        opportunities: ["Automatisation IA", "Expansion US"],
-        threats: ["Nouveaux entrants low-cost"],
-      },
+    title: "Senior Product Manager at Acme Corp",
+    step_1_data: {
+      job_title: "Senior Product Manager",
+      company_name: "Acme Corp",
+      location: "Paris",
+      key_requirements: ["SaaS B2B", "Analytics", "Leadership"],
+      key_responsibilities: ["Roadmap", "Discovery", "Delivery"],
     },
-
-    profileMatch: {
-      matchScore: 86,
-      items: [
-        { label: "Exp PM B2B SaaS", score: 90, note: "5+ ans" },
-        { label: "Data", score: 80, note: "SQL/Amplitude" },
-        { label: "Leadership", score: 88, note: "Scope transverse" },
-      ],
+    step_2_data: {
+      value_propositions: "Gain, pain relievers, features clés",
+      customer_segments: "Mid-market B2B",
+      revenue_streams: "Abonnement mensuel",
+      key_activities: "R&D, Go-to-market",
     },
-
-    why: {
-      company: ["Croissance forte", "Culture produit", "Equipe senior"],
-      role: ["Impact transverse", "Roadmap 12–18 mois ambitieuse"],
-      you: ["Exp B2B", "Data mindset", "Go-to-market"],
+    step_3_data: {
+      strengths: ["Brand", "Marge brute 80%"],
+      weaknesses: ["Pricing add-ons"],
+      opportunities: ["Automatisation IA"],
+      threats: ["Nouveaux entrants low-cost"],
     },
-
-    interview: {
-      companyToCandidate: [
-        {
-          question: "Parlez d’un échec marquant et des apprentissages.",
-          answer: "Expliquer le contexte, les métriques, ce qui a été changé.",
-        },
-        {
-          question: "Comment priorisez-vous sur backlog contraint ?",
-          answer: "RICE, contraintes ressources, quick wins vs impact long terme.",
-        },
+    step_4_data: {
+      personal_mission: "Construire des produits utiles et scalables",
+      key_skills: ["SQL", "Amplitude", "UX", "Leadership"],
+      achievements: ["+25% NPS", "–12% churn"],
+    },
+    step_5_data: {
+      why_you: "Exp. SaaS, mindset data, delivery robuste",
+      why_them: "Culture produit, croissance",
+      why_now: "Phase de scale, Série B",
+      elevator_pitch: "PM expérimenté orienté impact & data.",
+    },
+    step_6_data: {
+      questions: [
+        { question: "Parlez d’un échec marquant", answer: "Contexte, métriques, apprentissages" },
+        { question: "Comment priorisez-vous ?", tips: "RICE, contraintes, quick wins" },
       ],
-      candidateToCompany: [
-        { question: "Comment mesurez-vous le succès produit ?", answer: "" },
-        { question: "Quelles sont les priorités 6–12 mois ?", answer: "" },
+      questions_to_ask: [
+        "Comment mesurez-vous le succès produit ?",
+        "Quelles sont les priorités 6–12 mois ?",
       ],
     },
+    showGenerateButton: true,
   };
 }
 
 /* ----------------------------- HTML PREVIEW ------------------------------ */
 
-/**
- * GET /api/pdf/html
- * GET /api/pdf/preview (alias)
- * - ?sample=1 => données de démo
- * - ?data=<base64 JSON> => données passées par le front en base64
- */
 async function handleGetHtml(req: Request, res: Response) {
   try {
     let data: any;
@@ -92,7 +75,6 @@ async function handleGetHtml(req: Request, res: Response) {
     }
 
     if (!data) {
-      // si rien reçu, on essaie le body (Netlify peut proxy en GET avec body vide)
       data = Object.keys(req.body || {}).length ? req.body : sampleData();
     }
 
@@ -109,30 +91,10 @@ async function handleGetHtml(req: Request, res: Response) {
 
 router.get("/html", handleGetHtml);
 router.get("/preview", handleGetHtml);
-
-/** POST /api/pdf/html — rend du HTML depuis le body JSON */
-router.post("/html", async (req: Request, res: Response) => {
-  try {
-    const data = req.body && Object.keys(req.body).length ? req.body : sampleData();
-    const html = renderReport(data);
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    return res.status(200).send(html);
-  } catch (err: any) {
-    return res.status(500).json({
-      error: "Failed to render HTML",
-      details: String(err?.message || err),
-    });
-  }
-});
+router.post("/html", handleGetHtml);
 
 /* ----------------------------- PDF GENERATION ---------------------------- */
 
-/**
- * Génère un PDF à partir:
- * - du body JSON (POST)
- * - ou de ?data=<base64> (GET)
- * Aliases: /generate, /pdf, / (legacy)
- */
 async function handleGeneratePdf(req: Request, res: Response) {
   try {
     let data: any;
@@ -148,6 +110,7 @@ async function handleGeneratePdf(req: Request, res: Response) {
     res.setHeader("Content-Disposition", 'inline; filename="report.pdf"');
     return res.status(200).send(pdf);
   } catch (err: any) {
+    // on renvoie le détail pour faciliter le debug côté front (console)
     return res.status(500).json({
       error: "Failed to generate PDF",
       details: String(err?.message || err),
@@ -155,12 +118,9 @@ async function handleGeneratePdf(req: Request, res: Response) {
   }
 }
 
-// POST endpoints
 router.post("/generate", handleGeneratePdf);
 router.post("/pdf", handleGeneratePdf);
-router.post("/", handleGeneratePdf); // compat ancien front
-
-// GET endpoint (optionnel) pour ?data=...
+router.post("/", handleGeneratePdf);
 router.get("/generate", handleGeneratePdf);
 
 /* -------------------------------- PING ----------------------------------- */
