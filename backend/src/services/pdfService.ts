@@ -3,24 +3,42 @@ import path from "path";
 import Handlebars from "handlebars";
 import dayjs from "dayjs";
 import { ReportData } from "../types/report";
+import { renderPdf } from "./pdfEngine";
 
-const TEMPLATE_PATH = path.join(__dirname, "..", "templates", "report.hbs");
+// ⚠️ Tu as créé "report.handlebars", donc on pointe dessus.
+// Si tu renommes le fichier en report.hbs, change ce nom ici aussi.
+const TEMPLATE_PATH = path.join(__dirname, "..", "templates", "report.handlebars");
 
-// Charge et compile une fois
+// Compile le template une seule fois
 const templateSrc = fs.readFileSync(TEMPLATE_PATH, "utf8");
 const template = Handlebars.compile(templateSrc, { noEscape: true });
 
+/**
+ * Rend le rapport en HTML (utilisé par la route /report quand on veut juste du HTML).
+ */
 export function renderReport(raw: Partial<ReportData> & any): string {
   const data: ReportData = normalize(raw);
   return template(data);
 }
 
+/**
+ * Fonction conservant la signature attendue par src/worker.ts.
+ * Génère directement un PDF (Buffer) à partir des données du rapport.
+ * -> C’est celle que worker.ts importe: `generatePDFReport(...)`
+ */
+export async function generatePDFReport(raw: Partial<ReportData> & any): Promise<Buffer> {
+  const html = renderReport(raw);
+  const pdf = await renderPdf(html);
+  return pdf;
+}
+
+/** Normalisation / compat + valeurs par défaut */
 function normalize(raw: any): ReportData {
   // Compat: ancien "swot" -> "strategy"
-  const strategy = raw.strategy ?? raw.swot ?? {};
-  const generatedAt = raw.generatedAt ?? dayjs().format("DD MMM YYYY HH:mm");
+  const strategy = raw?.strategy ?? raw?.swot ?? {};
+  const generatedAt = raw?.generatedAt ?? dayjs().format("DD MMM YYYY HH:mm");
 
-  // Calcul score moyen si absent
+  // Calcul d’un score moyen si non fourni
   let matchScore = raw?.profileMatch?.matchScore;
   if (
     matchScore == null &&
@@ -37,17 +55,17 @@ function normalize(raw: any): ReportData {
 
   return {
     generatedAt,
-    candidate: { name: "", ...raw.candidate },
-    role: { title: "", ...raw.role },
-    company: { name: "", ...raw.company },
+    candidate: { name: "", ...raw?.candidate },
+    role: { title: "", ...raw?.role },
+    company: { name: "", ...raw?.company },
     strategy,
-    profileMatch: raw.profileMatch
+    profileMatch: raw?.profileMatch
       ? {
           ...raw.profileMatch,
           matchScore,
         }
       : undefined,
-    why: raw.why,
-    interview: raw.interview,
+    why: raw?.why,
+    interview: raw?.interview,
   } as ReportData;
 }
