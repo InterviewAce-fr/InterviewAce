@@ -2,69 +2,70 @@ import fs from "fs";
 import path from "path";
 import Handlebars from "handlebars";
 import dayjs from "dayjs";
-import { ReportData } from "../types/report";
-import { renderPdf } from "./pdfEngine";
+// ⚠️ on suppose que ton pdfEngine expose une fonction htmlToPDF(html, opts?)
+import { htmlToPDF } from "./pdfEngine";
 
-// Ton template : "report.handlebars"
-const TEMPLATE_PATH = path.join(__dirname, "..", "templates", "report.handlebars");
+let compiled: Handlebars.TemplateDelegate | null = null;
+let helpersRegistered = false;
 
-// Compile une fois
-const templateSrc = fs.readFileSync(TEMPLATE_PATH, "utf8");
-const template = Handlebars.compile(templateSrc, { noEscape: true });
+function registerHelpers() {
+  if (helpersRegistered) return;
+  helpersRegistered = true;
 
-/** Génère le HTML du rapport (utilisé par la route HTML si besoin) */
-export function renderReport(raw: Partial<ReportData> & any): string {
-  const data: ReportData = normalize(raw);
-  return template(data);
+  Handlebars.registerHelper("formatDate", (iso?: string) =>
+    iso ? dayjs(iso).format("DD/MM/YYYY HH:mm") : ""
+  );
+  Handlebars.registerHelper("join", (arr: any[], sep?: string) =>
+    Array.isArray(arr) ? arr.join(sep || ", ") : ""
+  );
+  Handlebars.registerHelper("percent", (v: any) =>
+    typeof v === "number" ? `${Math.round(v)}%` : v ?? ""
+  );
+  Handlebars.registerHelper("eq", (a: any, b: any) => a === b);
+  Handlebars.registerHelper("notEmpty", (v: any) =>
+    Array.isArray(v) ? v.length > 0 : !!v
+  );
 }
 
-/**
- * BACKWARD-COMPAT: accepte un 2ᵉ argument optionnel.
- * Certains appels (ex: worker.ts) passent (data, options|jobId|whatever).
- * On le relaie au moteur PDF si pertinent; sinon, il est ignoré.
- */
+function templatePath(): string {
+  // En prod (dist)
+  const distPath = path.join(__dirname, "../templates/report.handlebars");
+  if (fs.existsSync(distPath)) return distPath;
+  // En dev (src)
+  const devPath = path.join(__dirname, "../../src/templates/report.handlebars");
+  if (fs.existsSync(devPath)) return devPath;
+
+  // Dernier recours : même dossier (utile si empaqueté autrement)
+  return path.join(process.cwd(), "src", "templates", "report.handlebars");
+}
+
+function loadTemplate(): Handlebars.TemplateDelegate {
+  if (compiled) return compiled;
+  registerHelpers();
+
+  const filePath = templatePath();
+  const raw = fs.readFileSync(filePath, "utf-8");
+  compiled = Handlebars.compile(raw, { noEscape: true });
+
+  return compiled;
+}
+
+/** Rendu HTML du rapport */
+export function renderReport(data: any): string {
+  const tpl = loadTemplate();
+  const model = {
+    generatedAt: new Date().toISOString(),
+    ...data,
+  };
+  return tpl(model);
+}
+
+/** Génération PDF (signature tolère un 2e arg optionnel pour compat) */
 export async function generatePDFReport(
-  raw: Partial<ReportData> & any,
-  options?: any
+  data: any,
+  _opts?: { landscape?: boolean }
 ): Promise<Buffer> {
-  const html = renderReport(raw);
-  // Si ton pdfEngine ne prend qu'un seul argument, ce cast évite l'erreur TS.
-  const pdf: Buffer = await (renderPdf as any)(html, options);
+  const html = renderReport(data);
+  const pdf = await htmlToPDF(html, _opts);
   return pdf;
-}
-
-/** Normalisation + valeurs par défaut */
-function normalize(raw: any): ReportData {
-  const strategy = raw?.strategy ?? raw?.swot ?? {};
-  const generatedAt = raw?.generatedAt ?? dayjs().format("DD MMM YYYY HH:mm");
-
-  let matchScore = raw?.profileMatch?.matchScore;
-  if (
-    matchScore == null &&
-    Array.isArray(raw?.profileMatch?.items) &&
-    raw.profileMatch.items.length
-  ) {
-    const scored = raw.profileMatch.items
-      .map((i: any) => (typeof i.score === "number" ? i.score : undefined))
-      .filter((n: number | undefined) => typeof n === "number") as number[];
-    if (scored.length) {
-      matchScore = Math.round(scored.reduce((a, b) => a + b, 0) / scored.length);
-    }
-  }
-
-  return {
-    generatedAt,
-    candidate: { name: "", ...raw?.candidate },
-    role: { title: "", ...raw?.role },
-    company: { name: "", ...raw?.company },
-    strategy,
-    profileMatch: raw?.profileMatch
-      ? {
-          ...raw.profileMatch,
-          matchScore,
-        }
-      : undefined,
-    why: raw?.why,
-    interview: raw?.interview,
-  } as ReportData;
 }
