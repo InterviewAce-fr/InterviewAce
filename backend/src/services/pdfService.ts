@@ -7,6 +7,14 @@ import { htmlToPDF } from "./pdfEngine";
 let compiled: Handlebars.TemplateDelegate | null = null;
 let helpersRegistered = false;
 
+function hasContent(v: any): boolean {
+  if (!v) return false;
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === "string") return v.trim().length > 0;
+  if (typeof v === "object") return Object.keys(v).length > 0;
+  return !!v;
+}
+
 function registerHelpers() {
   if (helpersRegistered) return;
   helpersRegistered = true;
@@ -21,87 +29,43 @@ function registerHelpers() {
     typeof v === "number" ? `${Math.round(v)}%` : v ?? ""
   );
   Handlebars.registerHelper("eq", (a: any, b: any) => a === b);
-  Handlebars.registerHelper("notEmpty", (v: any) =>
-    Array.isArray(v) ? v.length > 0 : !!v
-  );
-
-  // ⬇️ Helper manquant dans ta version, requis par le template
-  Handlebars.registerHelper("hasContent", (v: any) => {
-    if (v == null) return false;
-    if (typeof v === "string") return v.trim().length > 0;
-    if (Array.isArray(v)) return v.length > 0;
-    if (typeof v === "object") return Object.keys(v).length > 0;
-    return true;
-  });
+  Handlebars.registerHelper("notEmpty", (v: any) => hasContent(v));
+  Handlebars.registerHelper("hasContent", (v: any) => hasContent(v));
 }
 
-/** Cherche un template dans dist/ puis src/ et accepte 2 noms */
-function findTemplateFile(): string {
-  const tryPaths = [
-    // dist (prod on Heroku)
-    path.join(__dirname, "../templates/report.handlebars"),
-    path.join(__dirname, "../templates/report-template.html"),
-    // src (dev local)
-    path.join(__dirname, "../../src/templates/report.handlebars"),
-    path.join(__dirname, "../../src/templates/report-template.html"),
-    // fallback
-    path.join(process.cwd(), "src", "templates", "report.handlebars"),
-    path.join(process.cwd(), "src", "templates", "report-template.html"),
-  ];
-  for (const p of tryPaths) {
-    if (fs.existsSync(p)) return p;
-  }
-  throw new Error(
-    `No report template found. Looked in:\n${tryPaths.join("\n")}`
-  );
+function templatePath(): string {
+  const distPath = path.join(__dirname, "../templates/report.handlebars");
+  if (fs.existsSync(distPath)) return distPath;
+  const devPath = path.join(__dirname, "../../src/templates/report.handlebars");
+  if (fs.existsSync(devPath)) return devPath;
+  return path.join(process.cwd(), "src", "templates", "report.handlebars");
 }
 
 function loadTemplate(): Handlebars.TemplateDelegate {
   if (compiled) return compiled;
   registerHelpers();
-  const filePath = findTemplateFile();
+  const filePath = templatePath();
   const raw = fs.readFileSync(filePath, "utf-8");
   compiled = Handlebars.compile(raw, { noEscape: true });
   return compiled;
 }
 
-/** Accepte:
- *  - data.step_X_data déjà à plat, ou
- *  - { preparationData: {...}, showGenerateButton?: boolean }
- */
-function normalizeInput(raw: any) {
-  const base = raw?.preparationData ? raw.preparationData : raw || {};
-  return {
-    title:
-      base.title ||
-      (base.step_1_data?.job_title && base.step_1_data?.company_name
-        ? `${base.step_1_data.job_title} at ${base.step_1_data.company_name}`
-        : "Interview Preparation"),
-    generatedAt: new Date().toISOString(),
-    isPremium: Boolean(base.is_premium || base.isPremium),
-    showGenerateButton: Boolean(raw?.showGenerateButton),
-
-    step_1_data: base.step_1_data || {},
-    step_2_data: base.step_2_data || {},
-    step_3_data: base.step_3_data || {},
-    step_4_data: base.step_4_data || {},
-    step_5_data: base.step_5_data || {},
-    step_6_data: base.step_6_data || {},
-  };
-}
-
-/** Rendu HTML du rapport */
 export function renderReport(data: any): string {
   const tpl = loadTemplate();
-  const model = normalizeInput(data);
+  const model = {
+    generatedAt: new Date().toISOString(),
+    FRONTEND_URL: process.env.FRONTEND_URL || "",
+    isPremium: !!data?.isPremium,
+    ...data,
+  };
   return tpl(model);
 }
 
-/** Génération PDF */
 export async function generatePDFReport(
   data: any,
-  opts?: { landscape?: boolean }
+  _opts?: { landscape?: boolean }
 ): Promise<Buffer> {
   const html = renderReport(data);
-  return await htmlToPDF(html, opts);
+  const pdf = await htmlToPDF(html, _opts);
+  return pdf;
 }
