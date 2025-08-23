@@ -4,7 +4,7 @@
   "description": "Backend API for Interview Preparation App",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc && cpy-cli -r src/templates dist/templates",
+    "build": "tsc && copyfiles -u 1 \"src/templates/**/*\" dist/",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "worker": "node dist/worker.js",
