@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
-import { FileText, Loader2, Download, CheckCircle, Crown } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { FileText, Loader2, Download, Crown } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 
 interface Step7GenerateReportProps {
-  data: any;
-  onUpdate: (data: any) => void;
+  data?: any;
+  onUpdate?: (data: any) => void;
   preparation: any;
 }
 
@@ -16,10 +16,11 @@ const ensureSessionToken = async (tokenFromCtx?: string) => {
 };
 
 const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }) => {
-  const { user, session, profile } = useAuth();
+  const { session, profile } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [html, setHtml] = useState<string>('');
   const [jobId, setJobId] = useState<string | null>(null);
-  const [jobStatus, setJobStatus] = useState<string | null>(null);
 
   const buildTitleFromStep1 = (s1: any) => {
     const jt = s1?.job_title?.trim();
@@ -29,7 +30,6 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
 
   const buildPreparationPayload = (p: any) => {
     const derived = buildTitleFromStep1(p?.step_1_data);
-
     const safeTitle =
       derived ||
       (p?.title && p.title.trim()) ||
@@ -49,6 +49,49 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
     };
   };
 
+  const loadHtmlPreview = async () => {
+    if (!preparation) return;
+    setPreviewLoading(true);
+    try {
+      const token = await ensureSessionToken(session?.access_token);
+      const resp = await fetch(`${import.meta.env.VITE_API_BASE_URL}/pdf/html`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          preparationData: buildPreparationPayload(preparation),
+          showGenerateButton: true,
+        }),
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const htmlText = await resp.text();
+      setHtml(htmlText);
+    } catch (e) {
+      console.error(e);
+      setHtml('<div style="padding:24px;font-family:system-ui">Failed to load preview.</div>');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadHtmlPreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preparation?.id]);
+
+  useEffect(() => {
+    const handler = (ev: MessageEvent) => {
+      if (ev?.data?.type === 'INTERVIEWACE_GENERATE_PDF') {
+        handleGenerateReport();
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preparation, session, profile]);
+
   const handleGenerateReport = async () => {
     if (!preparation) {
       alert('Preparation not loaded.');
@@ -62,7 +105,6 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
 
     setLoading(true);
     setJobId(null);
-    setJobStatus(null);
 
     try {
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/pdf/generate`, {
@@ -80,7 +122,6 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
         const raw = await response.text();
         let detail: any = null;
         try { detail = JSON.parse(raw); } catch {}
-        console.error('PDF generate error payload:', detail || raw);
         const msg = (detail && (detail.message || detail.error)) || 'Validation failed';
         throw new Error(msg);
       }
@@ -88,7 +129,6 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
       if (profile?.is_premium) {
         const data = await response.json();
         setJobId(data.jobId);
-        setJobStatus('queued');
         alert('PDF generation started. You will receive an email when ready.');
       } else {
         const blob = await response.blob();
@@ -111,26 +151,43 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 text-center">
-      <FileText className="w-16 h-16 text-blue-600 mx-auto mb-4" />
-      <h2 className="text-3xl font-bold text-gray-800 mb-2">Generate Your Report</h2>
-      <p className="text-gray-600 mb-6">
-        Click the button below to generate a professional PDF report of your preparation.
-      </p>
+    <div className="max-w-6xl mx-auto p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <FileText className="w-8 h-8 text-blue-600" />
+        <h2 className="text-2xl font-bold text-gray-900">Report Preview</h2>
+      </div>
 
-      <button
-        onClick={handleGenerateReport}
-        disabled={loading}
-        className="inline-flex items-center px-8 py-4 bg-blue-600 text-white rounded-lg font-semibold text-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {loading ? (
-          <Loader2 className="animate-spin h-6 w-6 mr-3" />
+      {/* Action bar sticky – non imprimée */}
+      <div className="sticky top-2 z-10 print:hidden mb-4">
+        <div className="bg-white/70 backdrop-blur border rounded-xl p-3 flex items-center justify-between shadow-sm">
+          <div className="text-sm text-gray-600">
+            Vérifie le rendu avant de générer le PDF.
+          </div>
+          <button
+            onClick={handleGenerateReport}
+            disabled={loading}
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="animate-spin h-5 w-5 mr-2" /> : <Download className="h-5 w-5 mr-2" />}
+            {loading ? 'Generating...' : 'Generate PDF'}
+          </button>
+        </div>
+      </div>
+
+      {/* Preview */}
+      <div className="rounded-xl border overflow-hidden shadow-sm bg-white">
+        {previewLoading ? (
+          <div className="p-10 text-center text-gray-500">Loading preview…</div>
         ) : (
-          <Download className="h-6 w-6 mr-3" />
+          <iframe
+            title="InterviewAce Report Preview"
+            srcDoc={html}
+            className="w-full h-[75vh] border-0"
+          />
         )}
-        {loading ? 'Generating...' : 'Generate PDF Report'}
-      </button>
+      </div>
 
+      {/* Premium job info */}
       {profile?.is_premium && jobId && (
         <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-800">
           <Crown className="w-5 h-5 inline mr-2" />
@@ -138,16 +195,6 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
           <p className="text-sm">You will receive an email with your report shortly.</p>
         </div>
       )}
-
-      <div className="mt-8 p-6 bg-gray-50 border border-gray-200 rounded-lg">
-        <h3 className="text-lg font-semibold text-gray-800 mb-3">💡 Report Tips</h3>
-        <ul className="text-gray-700 text-sm space-y-2 text-left">
-          <li>• Ensure all steps are completed for a comprehensive report.</li>
-          <li>• Premium users receive clean, watermark-free PDFs via email.</li>
-          <li>• Free users can download a watermarked PDF directly.</li>
-          <li>• Review your report before your interview to refresh your memory.</li>
-        </ul>
-      </div>
     </div>
   );
 };

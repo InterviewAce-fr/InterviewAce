@@ -1,127 +1,68 @@
-import puppeteer from 'puppeteer';
-import handlebars from 'handlebars';
 import fs from 'fs';
 import path from 'path';
-import { logger } from '../utils/logger';
+import Handlebars from 'handlebars';
+import dayjs from 'dayjs';
+// importe ta fonction qui convertit de l'HTML vers un buffer PDF (Puppeteer/wkhtmltopdf)
+import { createPDFBufferFromHTML } from './pdfEngine';
 
+// --- Helpers Handlebars partagés entre HTML preview et PDF ---
+Handlebars.registerHelper('hasContent', (obj: any) => {
+  if (!obj) return false;
+  if (Array.isArray(obj)) return obj.length > 0;
+  if (typeof obj === 'object') return Object.keys(obj).length > 0;
+  return !!obj;
+});
 
-function resolveChromePath(): string | undefined {
-  // On collecte TOUTES les variables d'env potentiellement posées par les buildpacks
-  const envKeys = Object.keys(process.env).filter(k =>
-    /(chrome|chromium).*(bin|path)/i.test(k)
-  );
+type CompileCtx = {
+  compiled?: HandlebarsTemplateDelegate<any>;
+};
+const templateCache: CompileCtx = {};
 
-  // candidates explicites d'env
-  const envCandidates = [
-    process.env.PUPPETEER_EXECUTABLE_PATH,
-    process.env.GOOGLE_CHROME_FOR_TESTING_BIN, // heroku-buildpack-chrome-for-testing
-    process.env.GOOGLE_CHROME_FOR_TESTING_PATH,
-    process.env.GOOGLE_CHROME_BIN,             // anciens buildpacks
-    process.env.CHROME_PATH,
-    process.env.CHROME_BIN,
-  ].filter(Boolean) as string[];
-
-  // chemins “classiques” sur Heroku/Linux
-  const staticCandidates = [
-    '/app/.apt/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/google-chrome',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-    // quelques emplacements CfT usuels
-    '/app/.cache/chrome-for-testing/chrome-linux64/chrome',
-    '/app/.chrome-for-testing/chrome-linux64/chrome',
-  ];
-
-  const candidates = [...envCandidates, ...staticCandidates];
-
-  // debug utile
-  try {
-    logger.info(`Chrome env keys: ${envKeys.map(k => `${k}=${process.env[k]}`).join(' | ')}`);
-    logger.info(`Chrome path candidates: ${candidates.join(' , ')}`);
-  } catch {}
-
-  for (const p of candidates) {
-    try {
-      if (p && fs.existsSync(p)) return p;
-    } catch {}
+const getTemplate = () => {
+  if (!templateCache.compiled) {
+    const tplPath = path.join(__dirname, '../templates/report-template.html');
+    const source = fs.readFileSync(tplPath, 'utf8');
+    templateCache.compiled = Handlebars.compile(source, { noEscape: true });
   }
-  return undefined;
-}
+  return templateCache.compiled!;
+};
 
-export async function generatePDFReport(preparationData: any, isPremium = false): Promise<Buffer> {
-  let browser;
-  try {
-    const templatePath = path.join(__dirname, '../templates/report-template.html');
-    const templateHtml = fs.readFileSync(templatePath, 'utf8');
-    const template = handlebars.compile(templateHtml);
+export const generateReportHTML = async (
+  preparationData: any,
+  isPremium: boolean,
+  opts?: { showGenerateButton?: boolean; frontendUrl?: string }
+) => {
+  const compiled = getTemplate();
 
-    const html = template({
-      ...preparationData,
-      isPremium,
-      generatedAt: new Date().toLocaleDateString(),
-      watermark: !isPremium,
-      hasData: (d: any) => d && Object.keys(d).length > 0,
-      formatArray: (arr: string[]) => arr?.filter(i => i?.trim()).join(', ') || 'Not specified',
-    });
+  // Valeurs sûres
+  const safeData = {
+    ...preparationData,
+    title: preparationData?.title || 'Interview Preparation',
+    job_url: preparationData?.job_url || '',
+    step_1_data: preparationData?.step_1_data || {},
+    step_2_data: preparationData?.step_2_data || {},
+    step_3_data: preparationData?.step_3_data || {},
+    step_4_data: preparationData?.step_4_data || {},
+    step_5_data: preparationData?.step_5_data || {},
+    step_6_data: preparationData?.step_6_data || {},
+  };
 
-    const executablePath = resolveChromePath();
-    logger.info(`Puppeteer resolved chrome path: ${executablePath || 'NONE'}`);
+  const html = compiled({
+    ...safeData,
+    isPremium,
+    generatedAt: dayjs().format('YYYY-MM-DD HH:mm'),
+    FRONTEND_URL: opts?.frontendUrl || process.env.FRONTEND_URL,
+    showGenerateButton: !!opts?.showGenerateButton,
+  });
 
-    browser = await puppeteer.launch({
-      headless: true,
-      ...(executablePath ? { executablePath } : {}), // très important
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
+  return html;
+};
 
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' },
-      displayHeaderFooter: true,
-      headerTemplate: `<div style="font-size:10px;width:100%;text-align:center;color:#666;">InterviewAce - Interview Preparation Report</div>`,
-      footerTemplate: `<div style="font-size:10px;width:100%;color:#666;display:flex;justify-content:space-between;padding:0 15mm;">
-        <span>Generated on ${new Date().toLocaleDateString()}</span>
-        <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
-        ${!isPremium ? '<span style="color:#999;">Generated with InterviewAce Free</span>' : ''}
-      </div>`,
-    });
-
-    logger.info(`PDF generated successfully (${pdfBuffer.length} bytes)`);
-    return pdfBuffer;
-  } catch (error) {
-    logger.error('PDF generation error:', error);
-    throw new Error(`Failed to generate PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  } finally {
-    if (browser) await browser.close();
-  }
-}
-
-// Register Handlebars helpers
-handlebars.registerHelper('eq', function(a, b) {
-  return a === b;
-});
-
-handlebars.registerHelper('or', function(a, b) {
-  return a || b;
-});
-
-handlebars.registerHelper('and', function(a, b) {
-  return a && b;
-});
-
-handlebars.registerHelper('json', function(context) {
-  return JSON.stringify(context, null, 2);
-});
-
-handlebars.registerHelper('formatList', function(items: string[]) {
-  if (!items || !Array.isArray(items)) return '';
-  return items.filter(item => item?.trim()).map(item => `• ${item}`).join('\n');
-});
-
-handlebars.registerHelper('hasContent', function(obj) {
-  return obj && typeof obj === 'object' && Object.keys(obj).length > 0;
-});
+export const generatePDFReport = async (preparationData: any, isPremium: boolean) => {
+  const html = await generateReportHTML(preparationData, isPremium, {
+    showGenerateButton: false, // bouton masqué dans la version PDF
+    frontendUrl: process.env.FRONTEND_URL,
+  });
+  const pdfBuffer = await createPDFBufferFromHTML(html);
+  return pdfBuffer;
+};

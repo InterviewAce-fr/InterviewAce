@@ -1,7 +1,7 @@
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { validateBody } from '../middleware/validation';
-import { generatePDFReport } from '../services/pdfService';
+import { generatePDFReport, generateReportHTML } from '../services/pdfService';
 import { pdfQueue } from '../worker';
 import { logger } from '../utils/logger';
 import Joi from 'joi';
@@ -23,8 +23,45 @@ const generatePDFSchema = Joi.object({
   }).required()
 });
 
+// Schema for HTML preview
+const generateHTMLSchema = Joi.object({
+  preparationData: Joi.object({
+    id: Joi.string().required(),
+    title: Joi.string().required(),
+    job_url: Joi.string().uri().allow(''),
+    step_1_data: Joi.object().default({}),
+    step_2_data: Joi.object().default({}),
+    step_3_data: Joi.object().default({}),
+    step_4_data: Joi.object().default({}),
+    step_5_data: Joi.object().default({}),
+    step_6_data: Joi.object().default({})
+  }).required(),
+  showGenerateButton: Joi.boolean().default(true)
+});
+
+// Generate HTML (preview)
+router.post(
+  '/html',
+  authenticateToken,
+  validateBody(generateHTMLSchema),
+  async (req: AuthRequest, res) => {
+    try {
+      const { preparationData, showGenerateButton } = req.body;
+      const html = await generateReportHTML(preparationData, !!req.user!.is_premium, {
+        showGenerateButton,
+        frontendUrl: process.env.FRONTEND_URL,
+      });
+      res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+      res.send(html);
+    } catch (error) {
+      logger.error('HTML preview error:', error);
+      res.status(500).json({ error: 'Failed to build HTML preview' });
+    }
+  }
+);
+
 // Generate PDF report
-router.post('/generate', 
+router.post('/generate',
   authenticateToken,
   validateBody(generatePDFSchema),
   async (req: AuthRequest, res) => {
@@ -35,7 +72,7 @@ router.post('/generate',
 
       logger.info(`PDF generation requested by user ${userId}`);
 
-      // For premium users, queue the job for background processing
+      // Premium -> queue
       if (isPremium) {
         const job = await pdfQueue.add('generate-report', {
           preparationData,
@@ -50,9 +87,8 @@ router.post('/generate',
         });
       }
 
-      // For free users, generate immediately
+      // Free -> direct buffer
       const pdfBuffer = await generatePDFReport(preparationData, isPremium);
-
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${preparationData.title.replace(/[^a-zA-Z0-9]/g, '-')}.pdf"`);
       res.send(pdfBuffer);
