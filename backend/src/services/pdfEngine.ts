@@ -1,9 +1,6 @@
 import puppeteer from "puppeteer";
 
-/**
- * Convertit un HTML en PDF via Puppeteer (compatible Heroku).
- * Les buildpacks Chrome/puppeteer configurent généralement CHROME_PATH / CHROME_BIN.
- */
+/** Convertit un HTML en PDF via Puppeteer (compat Heroku). */
 export async function htmlToPDF(
   html: string,
   opts?: { landscape?: boolean }
@@ -11,8 +8,9 @@ export async function htmlToPDF(
   const executablePath =
     process.env.PUPPETEER_EXECUTABLE_PATH ||
     process.env.CHROME_PATH ||
+    process.env.GOOGLE_CHROME_BIN || // souvent défini par certains buildpacks
     process.env.CHROME_BIN ||
-    "google-chrome";
+    puppeteer.executablePath(); // dernier recours
 
   const browser = await puppeteer.launch({
     executablePath,
@@ -31,23 +29,15 @@ export async function htmlToPDF(
 
   try {
     const page = await browser.newPage();
-
-    // Charge le HTML directement
-    await page.setContent(html, {
-      waitUntil: "networkidle0",
-    });
-
-    // Optionnel : force un viewport raisonnable
+    await page.setContent(html, { waitUntil: "networkidle0" });
     await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
-
-    const pdfBuffer = await page.pdf({
+    const pdf = await page.pdf({
       format: "A4",
       printBackground: true,
       landscape: !!opts?.landscape,
       margin: { top: "10mm", bottom: "10mm", left: "10mm", right: "10mm" },
     });
-
-    return pdfBuffer;
+    return pdf;
   } finally {
     await browser.close();
   }

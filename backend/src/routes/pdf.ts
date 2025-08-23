@@ -15,77 +15,67 @@ function decodeBase64Query(q?: string) {
 }
 
 function sampleData() {
-  // Données de démo minimales pour que le template affiche du contenu
   return {
-    title: "Senior Product Manager at Acme Corp",
+    title: "Senior PM at Acme Corp",
+    generatedAt: new Date().toISOString(),
+    isPremium: false,
+    showGenerateButton: true,
     step_1_data: {
       job_title: "Senior Product Manager",
       company_name: "Acme Corp",
       location: "Paris",
-      key_requirements: ["SaaS B2B", "Analytics", "Leadership"],
-      key_responsibilities: ["Roadmap", "Discovery", "Delivery"],
+      key_requirements: ["5+ ans", "B2B SaaS", "Data"],
     },
     step_2_data: {
-      value_propositions: "Gain, pain relievers, features clés",
-      customer_segments: "Mid-market B2B",
-      revenue_streams: "Abonnement mensuel",
-      key_activities: "R&D, Go-to-market",
+      value_propositions: "SaaS B2B",
+      customer_segments: "Mid-market",
+      revenue_streams: "Sub + add-ons",
+      key_activities: "Roadmap, GTM",
     },
     step_3_data: {
-      strengths: ["Brand", "Marge brute 80%"],
-      weaknesses: ["Pricing add-ons"],
+      strengths: ["Brand", "Gross margin +80%"],
+      weaknesses: ["Pricing confus"],
       opportunities: ["Automatisation IA"],
-      threats: ["Nouveaux entrants low-cost"],
+      threats: ["Low-cost entrants"],
     },
     step_4_data: {
-      personal_mission: "Construire des produits utiles et scalables",
-      key_skills: ["SQL", "Amplitude", "UX", "Leadership"],
-      achievements: ["+25% NPS", "–12% churn"],
+      personal_mission: "Construire des produits utiles",
+      key_skills: ["PM", "Analytics", "Leadership"],
+      achievements: ["+20% MRR", "NPS +12"],
     },
     step_5_data: {
-      why_you: "Exp. SaaS, mindset data, delivery robuste",
-      why_them: "Culture produit, croissance",
-      why_now: "Phase de scale, Série B",
-      elevator_pitch: "PM expérimenté orienté impact & data.",
+      why_you: "Expérience B2B SaaS + data",
+      why_them: "Croissance et culture produit",
+      why_now: "Nouveau cycle produit",
+      elevator_pitch: "Je délivre de la valeur rapidement et durablement.",
     },
     step_6_data: {
       questions: [
-        { question: "Parlez d’un échec marquant", answer: "Contexte, métriques, apprentissages" },
-        { question: "Comment priorisez-vous ?", tips: "RICE, contraintes, quick wins" },
+        { question: "Parlez d’un échec marquant.", answer: "Contexte → actions → résultats." },
       ],
-      questions_to_ask: [
-        "Comment mesurez-vous le succès produit ?",
-        "Quelles sont les priorités 6–12 mois ?",
-      ],
+      questions_to_ask: ["Comment mesurez-vous le succès produit ?"],
     },
-    showGenerateButton: true,
   };
 }
 
-/* ----------------------------- HTML PREVIEW ------------------------------ */
-
+/** ---------- HTML PREVIEW ---------- */
 async function handleGetHtml(req: Request, res: Response) {
   try {
     let data: any;
-
     if (req.query.sample === "1") {
       data = sampleData();
     } else if (typeof req.query.data === "string") {
       data = decodeBase64Query(req.query.data);
     }
-
     if (!data) {
       data = Object.keys(req.body || {}).length ? req.body : sampleData();
     }
-
     const html = renderReport(data);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    return res.status(200).send(html);
+    res.status(200).send(html);
   } catch (err: any) {
-    return res.status(500).json({
-      error: "Failed to render HTML",
-      details: String(err?.message || err),
-    });
+    console.error("HTML render error:", err);
+    res.status(500).json({ error: "Failed to render HTML", details: String(err?.message || err) });
   }
 }
 
@@ -93,28 +83,22 @@ router.get("/html", handleGetHtml);
 router.get("/preview", handleGetHtml);
 router.post("/html", handleGetHtml);
 
-/* ----------------------------- PDF GENERATION ---------------------------- */
-
+/** ---------- PDF GENERATION ---------- */
 async function handleGeneratePdf(req: Request, res: Response) {
   try {
     let data: any;
-
     if (req.method === "GET" && typeof req.query.data === "string") {
       data = decodeBase64Query(req.query.data);
     } else {
-      data = req.body && Object.keys(req.body).length ? req.body : sampleData();
+      data = Object.keys(req.body || {}).length ? req.body : sampleData();
     }
-
     const pdf = await generatePDFReport(data);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", 'inline; filename="report.pdf"');
-    return res.status(200).send(pdf);
+    res.status(200).send(pdf);
   } catch (err: any) {
-    // on renvoie le détail pour faciliter le debug côté front (console)
-    return res.status(500).json({
-      error: "Failed to generate PDF",
-      details: String(err?.message || err),
-    });
+    console.error("PDF generate error:", err);
+    res.status(500).json({ error: "Failed to generate PDF", details: String(err?.message || err) });
   }
 }
 
@@ -123,9 +107,7 @@ router.post("/pdf", handleGeneratePdf);
 router.post("/", handleGeneratePdf);
 router.get("/generate", handleGeneratePdf);
 
-/* -------------------------------- PING ----------------------------------- */
-router.get("/", (_req, res) => {
-  res.status(200).json({ status: "pdf service ok" });
-});
+/** ---------- PING ---------- */
+router.get("/", (_req, res) => res.status(200).json({ status: "pdf service ok" }));
 
 export default router;

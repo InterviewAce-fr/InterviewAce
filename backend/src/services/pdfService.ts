@@ -1,4 +1,3 @@
-// backend/src/services/pdfService.ts
 import fs from "fs";
 import path from "path";
 import Handlebars from "handlebars";
@@ -26,84 +25,75 @@ function registerHelpers() {
     Array.isArray(v) ? v.length > 0 : !!v
   );
 
-  // ✅ Manquait et cassait le rendu
+  // ⬇️ Helper manquant dans ta version, requis par le template
   Handlebars.registerHelper("hasContent", (v: any) => {
     if (v == null) return false;
+    if (typeof v === "string") return v.trim().length > 0;
     if (Array.isArray(v)) return v.length > 0;
     if (typeof v === "object") return Object.keys(v).length > 0;
-    if (typeof v === "string") return v.trim().length > 0;
-    return !!v;
+    return true;
   });
 }
 
-function templatePath(): string {
-  // Prod (dist/)
-  const distHb = path.join(__dirname, "../templates/report.handlebars");
-  if (fs.existsSync(distHb)) return distHb;
-  const distHtml = path.join(__dirname, "../templates/report-template.html");
-  if (fs.existsSync(distHtml)) return distHtml;
-
-  // Dev (src/)
-  const srcHb = path.join(__dirname, "../../src/templates/report.handlebars");
-  if (fs.existsSync(srcHb)) return srcHb;
-  const srcHtml = path.join(__dirname, "../../src/templates/report-template.html");
-  if (fs.existsSync(srcHtml)) return srcHtml;
-
-  // Dernier recours
-  return path.join(process.cwd(), "src", "templates", "report.handlebars");
+/** Cherche un template dans dist/ puis src/ et accepte 2 noms */
+function findTemplateFile(): string {
+  const tryPaths = [
+    // dist (prod on Heroku)
+    path.join(__dirname, "../templates/report.handlebars"),
+    path.join(__dirname, "../templates/report-template.html"),
+    // src (dev local)
+    path.join(__dirname, "../../src/templates/report.handlebars"),
+    path.join(__dirname, "../../src/templates/report-template.html"),
+    // fallback
+    path.join(process.cwd(), "src", "templates", "report.handlebars"),
+    path.join(process.cwd(), "src", "templates", "report-template.html"),
+  ];
+  for (const p of tryPaths) {
+    if (fs.existsSync(p)) return p;
+  }
+  throw new Error(
+    `No report template found. Looked in:\n${tryPaths.join("\n")}`
+  );
 }
 
 function loadTemplate(): Handlebars.TemplateDelegate {
   if (compiled) return compiled;
   registerHelpers();
-  const filePath = templatePath();
+  const filePath = findTemplateFile();
   const raw = fs.readFileSync(filePath, "utf-8");
   compiled = Handlebars.compile(raw, { noEscape: true });
   return compiled;
 }
 
-function normalizeModel(input: any): any {
-  if (input && typeof input === "object" && input.preparationData) {
-    const { preparationData, ...rest } = input;
-    const merged = { ...rest, ...preparationData };
+/** Accepte:
+ *  - data.step_X_data déjà à plat, ou
+ *  - { preparationData: {...}, showGenerateButton?: boolean }
+ */
+function normalizeInput(raw: any) {
+  const base = raw?.preparationData ? raw.preparationData : raw || {};
+  return {
+    title:
+      base.title ||
+      (base.step_1_data?.job_title && base.step_1_data?.company_name
+        ? `${base.step_1_data.job_title} at ${base.step_1_data.company_name}`
+        : "Interview Preparation"),
+    generatedAt: new Date().toISOString(),
+    isPremium: Boolean(base.is_premium || base.isPremium),
+    showGenerateButton: Boolean(raw?.showGenerateButton),
 
-    if (rest.showGenerateButton !== undefined) {
-      (merged as any).showGenerateButton = rest.showGenerateButton;
-    }
-    if (rest.isPremium !== undefined) {
-      (merged as any).isPremium = rest.isPremium;
-    }
-    if (!merged.title) {
-      const jt = merged?.step_1_data?.job_title?.trim?.();
-      const cn = merged?.step_1_data?.company_name?.trim?.();
-      (merged as any).title = jt && cn ? `${jt} at ${cn}` : "Interview Preparation";
-    }
-    return merged;
-  }
-
-  if (input && !input.title) {
-    const jt = input?.step_1_data?.job_title?.trim?.();
-    const cn = input?.step_1_data?.company_name?.trim?.();
-    input.title = jt && cn ? `${jt} at ${cn}` : "Interview Preparation";
-  }
-  return input;
+    step_1_data: base.step_1_data || {},
+    step_2_data: base.step_2_data || {},
+    step_3_data: base.step_3_data || {},
+    step_4_data: base.step_4_data || {},
+    step_5_data: base.step_5_data || {},
+    step_6_data: base.step_6_data || {},
+  };
 }
 
 /** Rendu HTML du rapport */
 export function renderReport(data: any): string {
   const tpl = loadTemplate();
-
-  const FRONTEND_URL =
-    process.env.FRONTEND_URL ||
-    process.env.WEBSITE_URL ||
-    "https://startling-salamander-f45eec.netlify.app";
-
-  const model = normalizeModel({
-    generatedAt: new Date().toISOString(),
-    FRONTEND_URL,
-    ...data,
-  });
-
+  const model = normalizeInput(data);
   return tpl(model);
 }
 
@@ -113,6 +103,5 @@ export async function generatePDFReport(
   opts?: { landscape?: boolean }
 ): Promise<Buffer> {
   const html = renderReport(data);
-  const pdf = await htmlToPDF(html, opts);
-  return pdf;
+  return await htmlToPDF(html, opts);
 }
