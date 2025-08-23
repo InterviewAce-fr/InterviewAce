@@ -1,23 +1,28 @@
 import puppeteer from "puppeteer";
 
 /**
- * Rend un HTML en PDF (Buffer).
- * Compatible Heroku (Chrome pour testing + buildpack puppeteer).
+ * Convertit un HTML en PDF via Puppeteer (compatible Heroku).
+ * Les buildpacks Chrome/puppeteer configurent généralement CHROME_PATH / CHROME_BIN.
  */
-export async function renderPdf(html: string): Promise<Buffer> {
+export async function htmlToPDF(
+  html: string,
+  opts?: { landscape?: boolean }
+): Promise<Buffer> {
   const executablePath =
     process.env.PUPPETEER_EXECUTABLE_PATH ||
     process.env.CHROME_PATH ||
-    undefined;
+    process.env.CHROME_BIN ||
+    "google-chrome";
 
   const browser = await puppeteer.launch({
-    headless: true,
     executablePath,
+    headless: true,
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-gpu",
+      "--no-first-run",
       "--no-zygote",
       "--single-process",
       "--font-render-hinting=none",
@@ -26,13 +31,23 @@ export async function renderPdf(html: string): Promise<Buffer> {
 
   try {
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-    const pdf = await page.pdf({
+
+    // Charge le HTML directement
+    await page.setContent(html, {
+      waitUntil: "networkidle0",
+    });
+
+    // Optionnel : force un viewport raisonnable
+    await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
+
+    const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
-      margin: { top: "12mm", right: "12mm", bottom: "14mm", left: "12mm" },
+      landscape: !!opts?.landscape,
+      margin: { top: "10mm", bottom: "10mm", left: "10mm", right: "10mm" },
     });
-    return pdf;
+
+    return pdfBuffer;
   } finally {
     await browser.close();
   }
