@@ -15,6 +15,31 @@ const ensureSessionToken = async (tokenFromCtx?: string) => {
   return session?.access_token;
 };
 
+/**
+ * Fetch Top News for a company from the backend.
+ * Returns an array of { title, url?, source?, date?, summary? }
+ */
+const fetchTopNews = async (companyName: string, token?: string, n: number = 5) => {
+  if (!companyName) return [];
+  try {
+    const resp = await fetch(`${import.meta.env.VITE_API_BASE_URL}/ai/top-news`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ company_name: companyName, n }),
+    });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    // backend may return {articles:[...]} or an array directly
+    const arr = Array.isArray(data?.articles) ? data.articles : (Array.isArray(data) ? data : []);
+    return arr;
+  } catch {
+    return [];
+  }
+};
+
 const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }) => {
   const { session, profile } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -54,6 +79,21 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
     setPreviewLoading(true);
     try {
       const token = await ensureSessionToken(session?.access_token);
+
+      // 1) Construire le payload
+      const prepPayload = buildPreparationPayload(preparation);
+
+      // 2) Récupérer et injecter les Top News si company_name dispo
+      const companyName = preparation?.step_1_data?.company_name || '';
+      const topNews = companyName ? await fetchTopNews(companyName, token, 5) : [];
+      if (Array.isArray(topNews) && topNews.length) {
+        prepPayload.step_3_data = {
+          ...(prepPayload.step_3_data || {}),
+          topNews, // le backend sait mapper topNews / top_news
+        };
+      }
+
+      // 3) Appeler le rendu HTML
       const resp = await fetch(`${import.meta.env.VITE_API_BASE_URL}/pdf/html`, {
         method: 'POST',
         headers: {
@@ -61,7 +101,7 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
           ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
-          preparationData: buildPreparationPayload(preparation),
+          preparationData: prepPayload,
           showGenerateButton: true,
         }),
       });
@@ -107,6 +147,20 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
     setJobId(null);
 
     try {
+      // 1) Construire le payload
+      const prepPayload = buildPreparationPayload(preparation);
+
+      // 2) Récupérer et injecter les Top News (même logique que preview)
+      const companyName = preparation?.step_1_data?.company_name || '';
+      const topNews = companyName ? await fetchTopNews(companyName, token, 5) : [];
+      if (Array.isArray(topNews) && topNews.length) {
+        prepPayload.step_3_data = {
+          ...(prepPayload.step_3_data || {}),
+          topNews,
+        };
+      }
+
+      // 3) Génération PDF
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/pdf/generate`, {
         method: 'POST',
         headers: {
@@ -114,7 +168,7 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          preparationData: buildPreparationPayload(preparation)
+          preparationData: prepPayload
         }),
       });
 
@@ -127,15 +181,18 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
       }
 
       if (profile?.is_premium) {
+        // premium → job queue (JSON)
         const data = await response.json();
         setJobId(data.jobId);
         alert('PDF generation started. You will receive an email when ready.');
       } else {
+        // non premium → renvoi direct du PDF (blob)
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
+        const safeName = (preparation.title || 'Interview Report').replace(/[^a-zA-Z0-9]/g, '-');
         a.href = url;
-        a.download = `${preparation.title.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
+        a.download = `${safeName}.pdf`;
         document.body.appendChild(a);
         a.click();
         a.remove();

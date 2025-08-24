@@ -7,7 +7,7 @@ import { htmlToPDF } from "./pdfEngine";
 let compiled: Handlebars.TemplateDelegate | null = null;
 let helpersRegistered = false;
 
-/* ------------------------- helpers handlebars ------------------------- */
+/* ------------------------- Handlebars helpers ------------------------- */
 function registerHelpers() {
   if (helpersRegistered) return;
   helpersRegistered = true;
@@ -15,14 +15,20 @@ function registerHelpers() {
   Handlebars.registerHelper("formatDate", (iso?: string) =>
     iso ? dayjs(iso).format("DD/MM/YYYY HH:mm") : ""
   );
+
+  Handlebars.registerHelper("notEmpty", (v: any) =>
+    Array.isArray(v) ? v.length > 0 : !!v
+  );
+
+  Handlebars.registerHelper("or", (a: any, b: any) => (!!a) || (!!b));
+  Handlebars.registerHelper("and", (a: any, b: any) => (!!a) && (!!b));
 }
 
-/* --------------------------- utils de parsing -------------------------- */
+/* ------------------------------ utils -------------------------------- */
 function toArray(v: any): string[] {
   if (!v) return [];
   if (Array.isArray(v)) return v.filter(Boolean).map(String);
   const s = String(v);
-  // split par retour ligne / point-virgule / pipe / virgule
   return s
     .split(/\r?\n|;|\||,/g)
     .map((x) => x.trim())
@@ -31,142 +37,175 @@ function toArray(v: any): string[] {
 
 function tryJson<T = any>(v: any): T | null {
   if (!v || typeof v !== "string") return null;
-  try {
-    return JSON.parse(v);
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(v); } catch { return null; }
 }
 
-/* ---------------------- mapping prep -> template ---------------------- */
+function normalizeNewsItem(item: any) {
+  if (!item) return null;
+  if (typeof item === "string") return { title: item };
+  return {
+    title: item.title || item.t || "",
+    source: item.source || item.s || "",
+    url: item.url || item.link || "",
+    date: item.date || item.published_at || item.publishedAt || "",
+    summary: item.summary || item.snippet || "",
+  };
+}
+
+/* -------- mapping preparationData (steps) -> template attendu ---------- */
 function normalizeForTemplate(incoming: any) {
-  // Cases attendus :
-  // incoming = { ... } OU incoming = { preparationData: {...}, showGenerateButton? }
+  // on accepte soit { preparationData: {...} } soit un objet directement
   const prep = incoming?.preparationData ? incoming.preparationData : incoming;
 
   const s1 = prep?.step_1_data || {};
-  const s2 = prep?.step_2_data || {};
-  const s3 = prep?.step_3_data || {};
-  const s4 = prep?.step_4_data || {};
-  const s5 = prep?.step_5_data || {};
-  const s6 = prep?.step_6_data || {};
+  const s2 = typeof prep?.step_2_data === "string" ? (tryJson(prep.step_2_data) || {}) : (prep?.step_2_data || {});
+  const s3 = typeof prep?.step_3_data === "string" ? (tryJson(prep.step_3_data) || {}) : (prep?.step_3_data || {});
+  const s4 = typeof prep?.step_4_data === "string" ? (tryJson(prep.step_4_data) || {}) : (prep?.step_4_data || {});
+  const s5 = typeof prep?.step_5_data === "string" ? (tryJson(prep.step_5_data) || {}) : (prep?.step_5_data || {});
+  const s6 = typeof prep?.step_6_data === "string" ? (tryJson(prep.step_6_data) || {}) : (prep?.step_6_data || {});
 
-  // Certaines étapes peuvent arriver en string JSON : on gère
-  const S2 = typeof s2 === "string" ? (tryJson(s2) || {}) : s2;
-  const S3 = typeof s3 === "string" ? (tryJson(s3) || {}) : s3;
-  const S4 = typeof s4 === "string" ? (tryJson(s4) || {}) : s4;
-  const S5 = typeof s5 === "string" ? (tryJson(s5) || {}) : s5;
-  const S6 = typeof s6 === "string" ? (tryJson(s6) || {}) : s6;
-
-  // -------- Header
+  /* -------- header (candidate / role / company) -------- */
   const role = {
-    title:
-      s1?.job_title ||
-      prep?.title ||
-      (prep?.job_title ?? "") ||
-      "",
+    title: s1?.job_title || prep?.title || s1?.title || "",
   };
+
+  const topNewsRaw =
+    incoming?.topNews ||
+    prep?.topNews ||
+    s3?.topNews ||
+    s3?.top_news ||
+    s2?.topNews ||
+    s2?.top_news ||
+    [];
 
   const company = {
     name: s1?.company_name || s1?.company || "",
     website: s1?.company_website || s1?.website || "",
-    // Business model (depuis step_2)
+    /* Business model (on couvre un maximum de variantes) */
     businessModel:
-      S2?.business_model ||
-      S2?.value_propositions ||
-      S2?.summary ||
+      s2?.business_model ||
+      s2?.businessModel ||
+      s2?.model ||
+      s2?.value_propositions ||
+      s2?.value_proposition ||
+      s2?.summary ||
       "",
-    revenueStreams: toArray(S2?.revenue_streams),
-    pricing: toArray(S2?.pricing),
-    keyCustomers: toArray(S2?.customer_segments || S2?.segments),
-
-    // Top news (on accepte plusieurs formes: topNews, top_news, news)
-    topNews:
-      (Array.isArray(S3?.topNews) && S3.topNews) ||
-      (Array.isArray(S3?.top_news) && S3.top_news) ||
-      (Array.isArray(S2?.topNews) && S2.topNews) ||
-      (Array.isArray(S2?.top_news) && S2.top_news) ||
-      (Array.isArray(S3?.news) && S3.news) ||
-      [],
+    revenueStreams:
+      toArray(s2?.revenue_streams || s2?.revenues || s2?.revenue || s2?.streams),
+    pricing: toArray(s2?.pricing || s2?.prices || s2?.price),
+    keyCustomers:
+      toArray(s2?.customer_segments || s2?.segments || s2?.customers),
+    topNews: Array.isArray(topNewsRaw)
+      ? topNewsRaw.map(normalizeNewsItem).filter(Boolean)
+      : [],
   };
 
-  const candidate = {
-    name:
-      S4?.candidate_name ||
-      prep?.candidate_name ||
-      (prep?.user && prep?.user?.name) ||
-      "—",
-  };
-
-  // -------- Strategy (ex-SWOT) depuis step_3
+  /* ----------------- Strategy (ex-SWOT) depuis step_3 ----------------- */
   const strategy = {
-    strengths: toArray(S3?.strengths),
-    weaknesses: toArray(S3?.weaknesses),
-    opportunities: toArray(S3?.opportunities),
-    threats: toArray(S3?.threats),
+    strengths: toArray(s3?.strengths || s3?.plus || s3?.assets),
+    weaknesses: toArray(s3?.weaknesses || s3?.gaps || s3?.risks),
+    opportunities: toArray(s3?.opportunities || s3?.ops),
+    threats: toArray(s3?.threats || s3?.competition || s3?.threat),
   };
 
-  // -------- Profile Match (step_4 + éventuel résultat de match)
-  const profileMatchRaw =
-    S4?.profileMatch ||
-    S4?.matchProfile ||
-    S4?.match_profile ||
-    null;
+  /* -------- Profile & Experience matching (step_4 / service match) ----- */
+  const match =
+    s4?.profileMatch || s4?.matchProfile || s4?.match_profile || s4?.match || null;
 
-  const profileMatch = profileMatchRaw
-    ? {
-        matchScore: profileMatchRaw.matchScore ?? profileMatchRaw.score ?? undefined,
-        summary: profileMatchRaw.summary ?? undefined,
-        items:
-          profileMatchRaw.items ||
-          profileMatchRaw.requirements ||
-          [],
-      }
-    : {
-        matchScore: undefined,
-        summary: S4?.personal_mission || undefined,
-        items: (S4?.key_skills || S4?.achievements)
-          ? toArray(S4.key_skills || [])
-              .concat(toArray(S4.achievements || []))
-              .map((txt: string) => ({
-                requirement: "Skill/Achievement",
-                evidence: txt,
-                score: undefined,
-              }))
-          : [],
-      };
+  let items: Array<{ requirement: string; evidence: string; score?: number }> = [];
+  let matchScore: number | undefined;
+  let summary: string | undefined;
 
-  // -------- WHY (step_5)
+  if (match) {
+    matchScore = match.matchScore ?? match.score ?? undefined;
+    summary = match.summary ?? undefined;
+
+    const src = Array.isArray(match.items)
+      ? match.items
+      : Array.isArray(match.requirements)
+      ? match.requirements
+      : [];
+
+    items = src.map((it: any) => {
+      // on couvre plusieurs schémas de clés possibles
+      const requirement =
+        it.requirement || it.label || it.name || it.skill || "Requirement";
+      const evidence =
+        it.evidence || it.note || it.experience || it.details || "";
+      const score =
+        typeof it.score === "number"
+          ? it.score
+          : (typeof it.matchScore === "number" ? it.matchScore : undefined);
+      return { requirement, evidence, score };
+    });
+  } else {
+    // fallback auto à partir de skills/achievements si pas d’objet de match
+    const raw = [
+      ...toArray(s4?.key_skills),
+      ...toArray(s4?.achievements),
+    ];
+    items = raw.map((txt) => ({
+      requirement: "Skill/Achievement",
+      evidence: txt,
+    }));
+    summary = s4?.personal_mission || undefined;
+  }
+
+  const profileMatch = { matchScore, summary, items };
+
+  /* ------------------------------ WHY (step_5) ------------------------- */
   const why = {
-    whyCompany: toArray(S5?.why_them || S5?.why_company),
-    whyRole: toArray(S5?.why_role), // si tu enregistres un champ "why_role"
-    whyYou: toArray(S5?.why_you).concat(toArray(S5?.why_now || S5?.elevator_pitch)),
+    // tableaux
+    whyCompany: toArray(s5?.why_company || s5?.why_them || s5?.why_this_company),
+    whyRole: toArray(s5?.why_role || s5?.why_this_role),
+    whyYou: [
+      ...toArray(s5?.why_you),
+      ...toArray(s5?.why_now),
+      ...toArray(s5?.elevator_pitch),
+    ],
   };
 
-  // -------- Interview Q&A (step_6)
-  // step_6_data: { questions: [{question, answer?, tips?}], questions_to_ask: [string] }
-  const qForCandidate = Array.isArray(S6?.questions)
-    ? S6.questions.map((q: any) => ({
-        question: q?.question || q?.q || "",
-        answer: q?.answer || "",
-        note: q?.tips || q?.note || "",
-      }))
-    : [];
+  /* --------------------------- Q&A (step_6) ---------------------------- */
+  // On accepte de multiples schémas
+  const forCandidateRaw =
+    s6?.questions ||
+    s6?.company_questions ||
+    s6?.companyToCandidate ||
+    s6?.questions_for_candidate ||
+    s6?.questions_company_to_candidate ||
+    [];
 
-  const qForCompany = toArray(S6?.questions_to_ask).map((q) => ({
-    question: q,
-    note: "",
-  }));
+  const forCompanyRaw =
+    s6?.questions_to_ask ||
+    s6?.candidate_questions ||
+    s6?.candidateToCompany ||
+    s6?.questions_for_company ||
+    s6?.questions_to_company ||
+    [];
+
+  const toQ = (q: any) => {
+    if (typeof q === "string") return { question: q, answer: "", note: "" };
+    return {
+      question: q?.question || q?.q || "",
+      answer: q?.answer || "",
+      note: q?.tips || q?.note || "",
+    };
+    };
 
   const interview = {
-    questionsForCandidate: qForCandidate,
-    questionsForCompany: qForCompany,
+    questionsForCandidate: Array.isArray(forCandidateRaw) ? forCandidateRaw.map(toQ) : [],
+    questionsForCompany: Array.isArray(forCompanyRaw) ? forCompanyRaw.map(toQ) : [],
   };
 
   return {
     generatedAt: new Date().toISOString(),
-    // champs attendus par le template
-    candidate,
+    candidate: {
+      name:
+        s4?.candidate_name ||
+        prep?.candidate_name ||
+        (prep?.user && prep?.user?.name) ||
+        "—",
+    },
     company,
     role,
     strategy,
@@ -183,9 +222,7 @@ function templatePath(): string {
     path.join(__dirname, "../../src/templates/report.handlebars"),
     path.join(process.cwd(), "src", "templates", "report.handlebars"),
   ];
-  for (const p of candidates) {
-    if (fs.existsSync(p)) return p;
-  }
+  for (const p of candidates) if (fs.existsSync(p)) return p;
   throw new Error("Template introuvable: src/templates/report.handlebars");
 }
 
