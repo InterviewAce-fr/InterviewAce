@@ -6,7 +6,6 @@ export interface JobAnalysisResult {
   responsibilities: string[];
   required_profile: string[];
   job_description: string;
-  company_summary?: string;
 }
 
 export interface CVAnalysisResult {
@@ -21,6 +20,44 @@ export interface CVAnalysisResult {
     location?: string;
     summary?: string;
   };
+}
+
+export interface MatchAnalysisResult {
+  overall_score: number;
+  strengths: string[];
+  gaps: string[];
+  recommendations: string[];
+}
+
+export interface SWOTResult {
+  strengths: string[];
+  weaknesses: string[];
+  opportunities: string[];
+  threats: string[];
+}
+
+const BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+const api = (p: string) => `${BASE}${p.startsWith('/') ? '' : '/'}${p}`;
+
+async function authHeaders() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Please log in to use this feature');
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${session.access_token}`
+  };
+}
+
+export interface BusinessModelData {
+  keyPartners: string[];
+  keyActivities: string[];
+  keyResources: string[];
+  valuePropositions: string[];
+  customerRelationships: string[];
+  channels: string[];
+  customerSegments: string[];
+  costStructure: string[];
+  revenueStreams: string[];
 }
 
 export interface MatchingResultsFront {
@@ -47,27 +84,6 @@ export interface TopNewsItem {
   category?: string;
 }
 
-async function authHeaders() {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('Please log in to use this feature');
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${session.access_token}`
-  };
-}
-
-export interface BusinessModelData {
-  keyPartners: string[];
-  keyActivities: string[];
-  keyResources: string[];
-  valuePropositions: string[];
-  customerRelationships: string[];
-  channels: string[];
-  customerSegments: string[];
-  costStructure: string[];
-  revenueStreams: string[];
-}
-
 class AIService {
 
   async analyzeJobFromUrl(_url: string): Promise<JobAnalysisResult> {
@@ -90,8 +106,7 @@ class AIService {
       job_title: d.job_title || 'Unknown Position',
       responsibilities: Array.isArray(d.responsibilities) ? d.responsibilities : [],
       required_profile: Array.isArray(d.required_profile) ? d.required_profile : [],
-      job_description: d.job_description || jobText,
-      company_summary: typeof d.company_summary === 'string' ? d.company_summary : undefined,
+      job_description: d.job_description || jobText
     };
   }
 
@@ -113,12 +128,7 @@ class AIService {
     };
   }
 
-  async analyzeMatch(jobData: JobAnalysisResult, cvData: CVAnalysisResult): Promise<{
-    overall_score: number;
-    strengths: string[];
-    gaps: string[];
-    recommendations: string[];
-  }> {
+  async analyzeMatch(jobData: JobAnalysisResult, cvData: CVAnalysisResult): Promise<MatchAnalysisResult> {
     const headers = await authHeaders();
     const r = await fetch(api(`/ai/match`), {
       method: 'POST',
@@ -144,41 +154,130 @@ class AIService {
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d?.error || 'Failed to generate answers');
-    return Array.isArray(d.answers) ? d.answers : [];
+    if (Array.isArray(d.answers)) return d.answers;
+    return [];
   }
 
-  async getBusinessModelCanvas(params: {
+  async generateSWOT(input: {
     company_name?: string;
-    existing?: Partial<BusinessModelData>;
-    company_summary?: string;
+    existing?: SWOTResult;
+  }): Promise<SWOTResult> {
+    const headers = await authHeaders();
+    const r = await fetch(api(`/ai/swot`), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(input)
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d?.error || 'Failed to generate SWOT');
+    return {
+      strengths: Array.isArray(d.strengths) ? d.strengths : [],
+      weaknesses: Array.isArray(d.weaknesses) ? d.weaknesses : [],
+      opportunities: Array.isArray(d.opportunities) ? d.opportunities : [],
+      threats: Array.isArray(d.threats) ? d.threats : []
+    };
+  }
+
+  async generateBusinessModel(input: {
+    company_name?: string;
+    existing?: BusinessModelData;
   }): Promise<BusinessModelData> {
     const headers = await authHeaders();
     const r = await fetch(api(`/ai/business-model`), {
       method: 'POST',
       headers,
-      body: JSON.stringify({
-        company_name: params.company_name,
-        existing: params.existing,
-        company_summary: params.company_summary,
-      })
+      body: JSON.stringify(input)
     });
     const d = await r.json();
-    if (!r.ok) throw new Error(d?.error || 'Failed to generate business model');
+    if (!r.ok) throw new Error(d?.error || 'Failed to generate Business Model');
+    const arr = (x: any) => (Array.isArray(x) ? x : []);
     return {
-      keyPartners: Array.isArray(d.keyPartners) ? d.keyPartners : [],
-      keyActivities: Array.isArray(d.keyActivities) ? d.keyActivities : [],
-      keyResources: Array.isArray(d.keyResources) ? d.keyResources : [],
-      valuePropositions: Array.isArray(d.valuePropositions) ? d.valuePropositions : [],
-      customerRelationships: Array.isArray(d.customerRelationships) ? d.customerRelationships : [],
-      channels: Array.isArray(d.channels) ? d.channels : [],
-      customerSegments: Array.isArray(d.customerSegments) ? d.customerSegments : [],
-      costStructure: Array.isArray(d.costStructure) ? d.costStructure : [],
-      revenueStreams: Array.isArray(d.revenueStreams) ? d.revenueStreams : [],
+      keyPartners: arr(d.keyPartners),
+      keyActivities: arr(d.keyActivities),
+      keyResources: arr(d.keyResources),
+      valuePropositions: arr(d.valuePropositions),
+      customerRelationships: arr(d.customerRelationships),
+      channels: arr(d.channels),
+      customerSegments: arr(d.customerSegments),
+      costStructure: arr(d.costStructure),
+      revenueStreams: arr(d.revenueStreams)
     };
   }
 
+  // Step 4 — matching avec ancrage par ligne (targetType/targetIndex/targetText)
+  async matchProfile(payload: {
+    requirements: string[];
+    responsibilities: string[];
+    education: string[];
+    experience: string[];
+    skills: string[];
+  }): Promise<MatchingResultsFront> {
+    const headers = await authHeaders();
+    const r = await fetch(api('/ai/match-profile'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d?.error || 'Match API error');
+
+    const matches = Array.isArray(d.matches) ? d.matches.map((m: any) => ({
+      // ✅ champs d’ancrage renvoyés par le backend
+      targetType: (m?.targetType === 'responsibility' ? 'responsibility' : 'requirement') as 'requirement' | 'responsibility',
+      targetIndex: Number.isFinite(Number(m?.targetIndex)) ? Number(m?.targetIndex) : 0,
+      targetText: String(m?.targetText ?? ''),
+
+      // scoring
+      skill: String(m?.skill ?? '—'),
+      grade: ((): 'High' | 'Moderate' | 'Low' => {
+        const g = String(m?.grade ?? '').toLowerCase();
+        if (g.startsWith('high')) return 'High';
+        if (g.startsWith('moder')) return 'Moderate';
+        if (g.startsWith('low')) return 'Low';
+        const s = Number(m?.score ?? 0);
+        if (s >= 75) return 'High';
+        if (s >= 50) return 'Moderate';
+        return 'Low';
+      })(),
+      score: Math.max(0, Math.min(100, Math.round(Number(m?.score ?? 0)))),
+      reasoning: String(m?.reasoning ?? ''),
+    })) : [];
+
+    const distribution = matches.reduce(
+      (acc, m) => {
+        if (m.score >= 75) acc.high++;
+        else if (m.score >= 50) acc.moderate++;
+        else acc.low++;
+        return acc;
+      },
+      { high: 0, moderate: 0, low: 0 }
+    );
+
+    return {
+      overallScore: typeof d.overallScore === 'number' ? d.overallScore : 0,
+      matches,
+      distribution,
+    };
+  }
+
+  // Step 5 — suggestions why questions
+  async generateWhySuggestions(cv: any, job: any, matches: any, swotAndBmc: any) {
+    const headers = await authHeaders();
+
+    const r = await fetch(api('/why-suggestions'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ cv, job, matches, swotAndBmc }),
+    });
+
+    const d = await r.json();
+    if (!r.ok) throw new Error(d?.error || 'Failed to generate why suggestions');
+
+    return d;
+  }
+
   // Step 3 - Top 3 News
-  async getTopNews(params: { company_name?: string; months?: number; limit?: number; company_summary?: string }): Promise<TopNewsItem[]> {
+  async getTopNews(params: { company_name?: string; months?: number; limit?: number }): Promise<TopNewsItem[]> {
     const headers = await authHeaders();
 
     // Timeout de 20s pour éviter les spinners éternels
@@ -198,7 +297,6 @@ class AIService {
           company_name: params.company_name,
           months: params.months ?? 18,
           limit: params.limit ?? 3,
-          company_summary: params.company_summary,
         }),
         signal: ctrl.signal,
       });
@@ -225,59 +323,6 @@ class AIService {
     console.debug('[TopNews] OK', data);
     return data;
   }
-
-  async getCompanyHistory(params: { company_name: string; limit?: number; company_summary?: string }): Promise<{ timeline: Array<{date:string; title:string; description:string; category?: string; impact?: string;}> }> {
-    const headers = await authHeaders();
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 20_000);
-    const url = api(`/ai/company-history`);
-    let r: Response;
-    try {
-      r = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          company_name: params.company_name,
-          limit: params.limit ?? 8,
-          company_summary: params.company_summary,
-        }),
-        signal: ctrl.signal,
-      });
-    } catch (err: any) {
-      clearTimeout(t);
-      throw new Error(err?.name === 'AbortError' ? 'Request timed out' : 'Network error');
-    }
-    clearTimeout(t);
-    if (!r.ok) {
-      let msg = 'Failed to fetch company history';
-      try {
-        const je = await r.clone().json();
-        msg = je?.error || msg;
-      } catch {
-        try { msg = await r.text(); } catch {}
-      }
-      throw new Error(msg);
-    }
-    const data = await r.json();
-    return {
-      timeline: Array.isArray(data?.timeline) ? data.timeline.map((it:any)=>({
-        date: String(it?.date || ''),
-        title: String(it?.title || ''),
-        description: String(it?.description || ''),
-        category: it?.category ? String(it.category) : undefined,
-        impact: it?.impact ? String(it.impact) : undefined,
-      })) : [],
-    };
-  }
 }
 
 export const aiService = new AIService();
-
-// Petite util pour composer l’URL API selon l’environnement
-function api(path: string) {
-  const base =
-    import.meta?.env?.VITE_API_BASE_URL?.replace(/\/+$/, '') ||
-    (window as any).__API_BASE_URL__ ||
-    '';
-  return `${base}${path}`;
-}

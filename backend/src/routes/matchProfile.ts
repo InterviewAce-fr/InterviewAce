@@ -1,72 +1,62 @@
-import { Router, Request, Response } from 'express';
+import { Router } from "express";
+import { z } from "zod";
+import { matchProfile } from "../services/aiService.server";
 
 const router = Router();
 
-/** Types partagés */
-export type MatchItem = { questionId: string; score: number };
-export type MatchProfile = {
-  id?: string;
-  overallScore: number;
-  matches: MatchItem[];
-  // ajoute ici d'autres champs si nécessaire
-};
-
-/**
- * Utilitaire: normalise l'entrée pour obtenir un tableau de profils.
- * - Si on reçoit un seul profil -> [profil]
- * - Si on reçoit déjà un tableau -> inchangé
- */
-function toArrayProfiles(input: unknown): MatchProfile[] {
-  if (Array.isArray(input)) return input as MatchProfile[];
-  if (input && typeof input === 'object') return [input as MatchProfile];
-  return [];
-}
-
-/**
- * Choisit le meilleur profil (par overallScore décroissant).
- * S'il n'y a pas de profils, renvoie un profil vide.
- */
-function pickBestProfile(profiles: MatchProfile[]): MatchProfile {
-  if (!profiles.length) {
-    return { overallScore: 0, matches: [] };
-  }
-  const sorted = [...profiles].sort(
-    (a, b) => (b.overallScore ?? 0) - (a.overallScore ?? 0)
-  );
-  return sorted[0];
-}
-
-/**
- * GET /match-profile (optionnel) — healthcheck
- */
-router.get('/', (_req: Request, res: Response) => {
-  res.json({ ok: true });
+const PayloadSchema = z.object({
+  requirements: z.array(z.string()).default([]),
+  responsibilities: z.array(z.string()).default([]),
+  education: z.array(z.string()).default([]),
+  experience: z.array(z.string()).default([]),
+  skills: z.array(z.string()).default([]),
 });
 
-/**
- * POST /match-profile
- * Body possible:
- * - { profile: MatchProfile }
- * - { profiles: MatchProfile[] }
- *
- * Réponse:
- * - { overallScore: number, matches: MatchItem[], profile?: MatchProfile }
- */
-router.post('/', (req: Request, res: Response) => {
-  const { profile, profiles } = req.body ?? {};
+router.post("/match-profile", async (req, res) => {
+  try {
+    const payload = PayloadSchema.parse(req.body);
+    const result = await matchProfile(payload);
 
-  const list = toArrayProfiles(profiles ?? profile);
-  const best = pickBestProfile(list);
+    const normalized = {
+      overallScore: Math.max(0, Math.min(100, Math.round(result.overallScore ?? 0))),
+      matches: Array.isArray(result.matches)
+        ? result.matches.map((m: any) => ({
+            targetType: m.targetType === 'responsibility' ? 'responsibility' : 'requirement',
+            targetIndex: Number.isFinite(Number(m.targetIndex)) ? Number(m.targetIndex) : 0,
+            targetText: String(m.targetText ?? ''),
 
-  // Sécurise les champs et évite l'accès sur un array par erreur
-  const overallScore = typeof best.overallScore === 'number' ? best.overallScore : 0;
-  const matches = Array.isArray(best.matches) ? best.matches : [];
+            skill: String(m.skill ?? '—'),
+            grade: ((): "High" | "Moderate" | "Low" => {
+              const g = String(m.grade ?? "").toLowerCase();
+              if (g.startsWith("high")) return "High";
+              if (g.startsWith("moder")) return "Moderate";
+              if (g.startsWith("low")) return "Low";
+              const s = Number(m.score ?? 0);
+              if (s >= 75) return "High";
+              if (s >= 50) return "Moderate";
+              return "Low";
+            })(),
+            score: Math.max(0, Math.min(100, Math.round(Number(m.score ?? 0)))),
+            reasoning: String(m.reasoning ?? ""),
+          }))
+        : [],
+      distribution: (() => {
+        const dist = { high: 0, moderate: 0, low: 0 };
+        for (const m of (Array.isArray(result.matches) ? result.matches : [])) {
+          const s = Number(m.score ?? 0);
+          if (s >= 75) dist.high++;
+          else if (s >= 50) dist.moderate++;
+          else dist.low++;
+        }
+        return dist;
+      })(),
+    };
 
-  res.json({
-    overallScore,
-    matches,
-    profile: best,
-  });
+    res.json(normalized);
+  } catch (err: any) {
+    console.error("match-profile error", err);
+    res.status(400).json({ error: err?.message ?? "Invalid request" });
+  }
 });
 
 export default router;

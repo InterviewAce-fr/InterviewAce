@@ -5,7 +5,6 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { toast } from '../components/ui/Toast';
 import Step1JobAnalysis from '../components/preparation/Step1JobAnalysis';
-import Step2TopNewsHistory from '../components/preparation/Step2TopNewsHistory';
 import Step2BusinessModel from '../components/preparation/Step2BusinessModel';
 import Step3SWOT from '../components/preparation/Step3SWOT';
 import Step4Profile from '../components/preparation/Step4Profile';
@@ -18,19 +17,20 @@ interface Preparation {
   title: string;
   job_url: string;
   is_complete: boolean;
-  created_at?: string;
-  updated_at?: string;
   step_1_data: any;
   step_2_data: any;
   step_3_data: any;
   step_4_data: any;
   step_5_data: any;
   step_6_data: any;
+  created_at: string;
+  updated_at: string;
 }
 
 const PreparationJourney: React.FC = () => {
+  const { user, profile } = useAuth();
+
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
   const navigate = useNavigate();
 
   const [currentStep, setCurrentStep] = useState(1);
@@ -44,13 +44,12 @@ const PreparationJourney: React.FC = () => {
 
   const steps = [
     { number: 1, title: 'Job Analysis', component: Step1JobAnalysis },
-    { number: 2, title: 'Top News & Company History', component: Step2TopNewsHistory },
-    { number: 3, title: 'Business Model', component: Step2BusinessModel },
-    { number: 4, title: 'Company Strategy', component: Step3SWOT },
-    { number: 5, title: 'Matching Requirements', component: Step4Profile },
-    { number: 6, title: 'Why Questions', component: Step5WhyQuestions },
-    { number: 7, title: 'Interview Questions', component: Step6Questions },
-    { number: 8, title: 'Generate Report', component: Step7GenerateReport },
+    { number: 2, title: 'Business Model', component: Step2BusinessModel },
+    { number: 3, title: 'Company Strategy', component: Step3SWOT },
+    { number: 4, title: 'Matching Requirements', component: Step4Profile },
+    { number: 5, title: 'Why Questions', component: Step5WhyQuestions },
+    { number: 6, title: 'Interview Questions', component: Step6Questions },
+    { number: 7, title: 'Generate Report', component: Step7GenerateReport },
   ];
 
   useEffect(() => {
@@ -69,32 +68,14 @@ const PreparationJourney: React.FC = () => {
         step_4_data: {},
         step_5_data: {},
         step_6_data: {},
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
       setLoading(false);
       return;
     }
 
-    // Fetch mode
-    const fetchPreparation = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('preparations')
-          .select('*')
-          .eq('id', id)
-          .eq('user_id', user!.id)
-          .single();
-
-        if (error || !data) throw error || new Error('Not found');
-        setPreparation(data as Preparation);
-      } catch (error) {
-        console.error('Error fetching preparation:', error);
-        toast.error('Failed to load preparation');
-        navigate('/dashboard');
-      } finally {
-        setLoading(false);
-      }
-    };
-
+    // Edit mode
     fetchPreparation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, user]);
@@ -113,27 +94,28 @@ const PreparationJourney: React.FC = () => {
 
       if (!error && data) {
         setResumeCv({
-          skills: Array.isArray((data as any).skills) ? (data as any).skills : [],
-          education: Array.isArray((data as any).education) ? (data as any).education : [],
-          experience: Array.isArray((data as any).experience) ? (data as any).experience : []
+          skills: data.skills ?? [],
+          education: data.education ?? [],
+          experience: data.experience ?? [],
         });
+      } else {
+        setResumeCv({ skills: [], education: [], experience: [] }); // fallback
       }
     };
 
     fetchActiveResume();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // Pre-fill step 4 with resume if empty when visiting it
+  // Make resumeCV data always available in Step4
   useEffect(() => {
-    if (!preparation || !resumeCv) return;
+    if (!resumeCv) return;
     if (currentStep !== 4) return;
 
-    const s4 = (preparation.step_4_data || {}) as any;
+    const s4 = (preparation as any).step_4_data || {};
     const isEmpty =
-      !(Array.isArray(s4?.keySkills) && s4.keySkills.length) &&
-      !(Array.isArray(s4.education) && s4.education.length) &&
-      !(Array.isArray(s4.experience) && s4.experience.length);
+      !(s4.keySkills?.length) &&
+      !(s4.education?.length) &&
+      !(s4.experience?.length);
 
     if (isEmpty) {
       updateStepData(4, {
@@ -165,6 +147,35 @@ const PreparationJourney: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const fetchPreparation = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('preparations')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', user!.id)
+        .single();
+
+      if (error) {
+        if ((error as any).code === 'PGRST116') {
+          toast.error('Preparation not found');
+          navigate('/dashboard');
+          return;
+        }
+        throw error;
+      }
+
+      setPreparation(data as Preparation);
+    } catch (error) {
+      console.error('Error fetching preparation:', error);
+      toast.error('Failed to load preparation');
+      navigate('/dashboard');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Crée l'enregistrement si besoin et renvoie l'id
   const ensurePreparationId = async (): Promise<string | undefined> => {
     if (!preparation) return;
     if (preparation.id) return preparation.id;
@@ -212,23 +223,10 @@ const PreparationJourney: React.FC = () => {
       const prepId = preparation.id || (await ensurePreparationId());
       if (!prepId) return;
 
-      // Étape 2: sérialiser dans step_1_data.newsHistory
-      let tableUpdate: any = {};
-      let stepKey = `step_${stepNumber}_data`;
+      const stepKey = `step_${stepNumber}_data`;
 
       // si on sauvegarde l'étape 1, mettre à jour la colonne title
       const extra: Record<string, any> = {};
-
-      if (stepNumber === 2) {
-        // merge dans step_1_data
-        const currentS1 = (preparation.step_1_data || {}) as any;
-        tableUpdate = {
-          step_1_data: { ...currentS1, newsHistory: data },
-        };
-      } else {
-        tableUpdate = { [stepKey]: data };
-      }
-
       if (stepNumber === 1) {
         const derived = buildTitleFromStep1(data);
         if (derived) {
@@ -236,10 +234,11 @@ const PreparationJourney: React.FC = () => {
         }
       }
 
+
       const { error } = await supabase
         .from('preparations')
         .update({
-          ...tableUpdate,
+          [stepKey]: data,
           updated_at: new Date().toISOString(),
           ...extra,
         })
@@ -255,31 +254,12 @@ const PreparationJourney: React.FC = () => {
     }
   };
 
-  const flushPendingSave = async () => {
-    if (lastEditedRef.current) {
-      const { step, data } = lastEditedRef.current;
-      lastEditedRef.current = null;
-      await persistStepToSupabase(step, data);
-    }
-  };
-
   const updateStepData = (stepNumber: number, data: any) => {
     // 1) mise à jour locale immédiate
+    const stepKey = `step_${stepNumber}_data` as keyof Preparation;
     setPreparation(prev => {
       if (!prev) return prev as any;
 
-      // Étape 2 (Top News & History) : stockée dans step_1_data.newsHistory pour éviter de déplacer les autres colonnes
-      if (stepNumber === 2) {
-        const s1 = (prev.step_1_data || {}) as any;
-        const next: Preparation = {
-          ...prev,
-          step_1_data: { ...s1, newsHistory: data },
-          updated_at: new Date().toISOString(),
-        } as Preparation;
-        return next;
-      }
-
-      const stepKey = `step_${stepNumber}_data` as keyof Preparation;
       const next: Preparation = {
         ...prev,
         [stepKey]: data,
@@ -309,16 +289,43 @@ const PreparationJourney: React.FC = () => {
         persistStepToSupabase(step, data);
         lastEditedRef.current = null;
       }
-      setSaving(false);
+      saveTimerRef.current = null;
     }, 1000);
+  };
+
+  const flushPendingSave = async () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (lastEditedRef.current) {
+      const { step, data } = lastEditedRef.current;
+      lastEditedRef.current = null;
+      await persistStepToSupabase(step, data);
+    }
+  };
+
+  const nextStep = async () => {
+    await flushPendingSave();
+    if (currentStep < steps.length) setCurrentStep(currentStep + 1);
+  };
+
+  const prevStep = async () => {
+    await flushPendingSave();
+    if (currentStep > 1) setCurrentStep(currentStep - 1);
+  };
+
+  const goToStep = async (stepNumber: number) => {
+    await flushPendingSave();
+    setCurrentStep(stepNumber);
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <CheckCircle className="h-8 w-8 mx-auto text-gray-300" />
-          <p className="mt-2 text-gray-600">Loading…</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading preparation...</p>
         </div>
       </div>
     );
@@ -335,9 +342,7 @@ const PreparationJourney: React.FC = () => {
   }
 
   const CurrentStepComponent = steps[currentStep - 1].component;
-  const currentStepData = currentStep === 2
-    ? ((preparation as any).step_1_data?.newsHistory || {})
-    : ((preparation as any)[`step_${currentStep}_data`] || {});
+  const currentStepData = (preparation as any)[`step_${currentStep}_data`] || {};
 
   const buildTitleFromStep1 = (step1: any) => {
     const jt = step1?.job_title?.trim();
@@ -369,8 +374,8 @@ const PreparationJourney: React.FC = () => {
             <div className="flex items-center space-x-2">
               {saving && (
                 <div className="flex items-center text-sm text-gray-600">
-                  <span className="mr-2 inline-flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-                  Saving…
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600 mr-2"></div>
+                  Saving...
                 </div>
               )}
             </div>
@@ -378,19 +383,31 @@ const PreparationJourney: React.FC = () => {
         </div>
       </div>
 
-      {/* Stepper */}
-      <div className="bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center overflow-x-auto">
+      {/* Progress Steps */}
+      <div className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between py-4">
             {steps.map((step, index) => (
               <div key={step.number} className="flex items-center">
-                <span
-                  className={`px-3 py-1.5 text-sm rounded-md ${
+                <button
+                  onClick={() => goToStep(step.number)}
+                  className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium transition-colors ${
                     currentStep === step.number
                       ? 'bg-indigo-600 text-white'
                       : currentStep > step.number
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-gray-100 text-gray-700'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                  }`}
+                >
+                  {currentStep > step.number ? (
+                    <CheckCircle className="h-5 w-5" />
+                  ) : (
+                    step.number
+                  )}
+                </button>
+                <span
+                  className={`ml-2 text-sm font-medium ${
+                    currentStep === step.number ? 'text-indigo-600' : 'text-gray-600'
                   }`}
                 >
                   {step.title}
@@ -408,52 +425,46 @@ const PreparationJourney: React.FC = () => {
         </div>
       </div>
 
-      {/* Body */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-9">
-            <CurrentStepComponent
+      {/* Step Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="bg-white rounded-lg shadow-sm p-6">
+          {currentStep === 7 ? (
+            <Step7GenerateReport
               data={currentStepData}
               onUpdate={(data: any) => updateStepData(currentStep, data)}
-              cvData={resumeCv ?? { skills: [], education: [], experience: [] }}
-              jobData={(preparation as any).step_1_data}
-              bmcData={(preparation as any).step_2_data}
-              swotData={(preparation as any).step_3_data}
-              matchingResults={(preparation as any).step_4_data?.matchingResults}
-              companyName={(preparation as any).step_1_data?.company_name}
+              preparation={preparation}
             />
-          </div>
+          ) : (
+          <CurrentStepComponent
+            data={currentStepData}
+            onUpdate={(data: any) => updateStepData(currentStep, data)}
+            cvData={resumeCv ?? { skills: [], education: [], experience: [] }}
+            jobData={(preparation as any).step_1_data}
+            bmcData={(preparation as any).step_2_data}
+            swotData={(preparation as any).step_3_data}
+            matchingResults={(preparation as any).step_4_data?.matchingResults}
+            companyName={(preparation as any).step_1_data?.company_name}
+          />
+          )}
 
-          {/* Sidebar actions */}
-          <div className="lg:col-span-3">
-            <div className="bg-white border rounded-xl p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-medium text-gray-900">Step {currentStep} of {steps.length}</div>
-                  <div className="text-xs text-gray-500">Progress autosaves</div>
-                </div>
-                <CheckCircle className="h-5 w-5 text-green-600" />
-              </div>
-
-              <div className="mt-4 flex items-center justify-between">
-                <button
-                  onClick={() => setCurrentStep((s) => Math.max(1, s - 1))}
-                  disabled={currentStep === 1}
-                  className="flex items-center px-4 py-2 text-sm font-medium rounded-md border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50"
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  Prev
-                </button>
-                <button
-                  onClick={() => setCurrentStep((s) => Math.min(steps.length, s + 1))}
-                  disabled={currentStep === steps.length}
-                  className="flex items-center px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </button>
-              </div>
-            </div>
+          {/* Navigation */}
+          <div className="flex justify-between mt-8 pt-6 border-t">
+            <button
+              onClick={prevStep}
+              disabled={currentStep === 1}
+              className="flex items-center px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Previous
+            </button>
+            <button
+              onClick={nextStep}
+              disabled={currentStep === steps.length}
+              className="flex items-center px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </button>
           </div>
         </div>
       </div>
