@@ -7,11 +7,19 @@ import { useArrayField } from '@/components/hooks';
 interface Step1Props {
   data: {
     company_name?: string;
+    company_summary?: string; // NEW
     job_title?: string;
     keyRequirements?: string[];
     keyResponsibilities?: string[];
   };
   onUpdate: (data: any) => void;
+}
+
+function extractCompanySummaryFallback(raw: string): string | undefined {
+  if (!raw) return undefined;
+  const m = raw.match(/(?:about\s+(?:us|the company)|à\s+propos(?:\s+de\s+l'?entreprise)?)\s*[:\-]?\s*([\s\S]{80,500})/i);
+  const s = m?.[1]?.split(/\n{2,}/)?.[0]?.trim();
+  return s || undefined;
 }
 
 export default function Step1JobAnalysis({ data, onUpdate }: Step1Props) {
@@ -45,9 +53,13 @@ export default function Step1JobAnalysis({ data, onUpdate }: Step1Props) {
           ? await aiService.analyzeJobFromUrl(jobUrl.trim())
           : await aiService.analyzeJobFromText(jobText.trim());
 
+      // Fallback si le backend ne renvoie pas company_summary
+      const fallbackSummary = analysisResult.company_summary || extractCompanySummaryFallback(jobText);
+
       onUpdate({
         ...data,
         company_name: analysisResult.company_name || '',
+        company_summary: fallbackSummary || '',
         job_title: analysisResult.job_title || '',
         keyRequirements: analysisResult.required_profile || [],
         keyResponsibilities: analysisResult.responsibilities || [],
@@ -170,6 +182,18 @@ export default function Step1JobAnalysis({ data, onUpdate }: Step1Props) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
+        </div>
+
+        {/* (Optionnel) résumé société visible et éditable */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Company Summary</label>
+          <textarea
+            value={data.company_summary || ''}
+            onChange={(e) => onUpdate({ ...data, company_summary: e.target.value })}
+            placeholder="Short company blurb (mission, product, market, scale…) if available"
+            rows={3}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
         </div>
 
         {/* Deux colonnes : Requirements / Responsibilities */}
