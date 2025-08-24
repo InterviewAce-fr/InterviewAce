@@ -1,83 +1,42 @@
-// src/routes/whySuggestions.ts
-import { Router } from "express";
-import { z } from "zod";
-import { generateWhySuggestions } from "../services/aiService.server";
-import { authenticateToken } from "../middleware/auth";
+import { Router, Request, Response } from 'express';
+import { generateWhySuggestions, MatchProfile, MatchItem } from '../services/aiService.server';
 
 const router = Router();
 
-// --- Zod schemas ------------------------------------
-const StringArray = z.array(z.any()).transform((arr) =>
-  (Array.isArray(arr) ? arr : [])
-    .map((item: any) => {
-      if (typeof item === "string") return item.trim();
-      if (item && typeof item === "object") {
-        return (
-          item.name ||
-          item.title ||
-          item.skill ||
-          item.label ||
-          item.company ||
-          item.university ||
-          JSON.stringify(item)
-        ).toString();
-      }
-      return String(item ?? "");
-    })
-    .filter(Boolean)
-);
+/**
+ * POST /why-suggestions
+ * Body attendu:
+ * - { profile: MatchProfile, limit?: number }
+ * - ou bien { matches: MatchItem[], limit?: number } et on reconstruit un profil
+ */
+router.post('/', async (req: Request, res: Response) => {
+  const { profile, matches, limit } = req.body ?? {};
 
-const PayloadSchema = z.object({
-  cv: z.object({
-    skills: StringArray,
-    education: StringArray,
-    experience: StringArray,
-  }),
-  job: z.object({
-    requirements: StringArray,
-    responsibilities: StringArray,
-  }).passthrough(),
-  matches: z.object({
-    overallScore: z.number().optional(),
-    matches: z.array(z.object({
-      targetType: z.enum(["requirement", "responsibility"]),
-      targetIndex: z.number(),
-      targetText: z.string(),
-      skill: z.string(),
-      grade: z.enum(["High", "Moderate", "Low"]),
-      score: z.number(),
-      reasoning: z.string(),
-    })).default([]),
-  }).optional(),
-  swotAndBmc: z.object({
-    strengths: StringArray.default([]),
-    weaknesses: StringArray.default([]),
-    opportunities: StringArray.default([]),
-    threats: StringArray.default([]),
-    bmc: z.object({
-      valuePropositions: StringArray.default([]),
-      customerSegments: StringArray.default([]),
-      keyActivities: StringArray.default([]),
-      keyResources: StringArray.default([]),
-      channels: StringArray.default([]),
-    }).default({}),
-    matches: z.any().optional(),
-  }).default({}),
-});
+  let normalizedProfile: MatchProfile | undefined = profile;
 
-// --- Route ------------------------------------------
-router.post("/why-suggestions", authenticateToken, async (req, res) => {
-  try {
-    const payload = PayloadSchema.parse(req.body);
-    const suggestions = await generateWhySuggestions(payload);
-    res.json({
-      whyCompany: suggestions.whyCompany ?? "",
-      whyRole: suggestions.whyRole ?? "",
-      whyYou: suggestions.whyYou ?? "",
+  if (!normalizedProfile && Array.isArray(matches)) {
+    const overallScore =
+      matches.reduce((acc: number, m: MatchItem) => acc + (m?.score ?? 0), 0) /
+      (matches.length || 1);
+    normalizedProfile = { overallScore, matches };
+  }
+
+  if (!normalizedProfile) {
+    return res.status(400).json({
+      error: 'Missing profile or matches in request body.',
     });
-  } catch (err: any) {
-    console.error("why-suggestions error", err);
-    res.status(400).json({ error: err?.message ?? "Invalid request" });
+  }
+
+  try {
+    const suggestions = await generateWhySuggestions({
+      profile: normalizedProfile,
+      limit: typeof limit === 'number' ? limit : 5,
+    });
+
+    res.json({ suggestions });
+  } catch (err) {
+    // Évite d’exposer des détails sensibles
+    res.status(500).json({ error: 'Failed to generate suggestions.' });
   }
 });
 
