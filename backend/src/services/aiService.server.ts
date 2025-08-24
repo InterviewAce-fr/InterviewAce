@@ -1,3 +1,6 @@
+// charge .env avant tout
+import 'dotenv/config';
+
 import OpenAI from 'openai';
 import { subMonths, differenceInMonths } from 'date-fns';
 import { z } from 'zod';
@@ -14,15 +17,35 @@ const toInt = (n: any) => Number.isFinite(Number(n)) ? Math.round(Number(n)) : 0
 /* ------------------------------------------------------------------ */
 /* Common helper                                                      */
 /* ------------------------------------------------------------------ */
-function withTimeout<T>(p: Promise<T>, ms: number, label = 'timeout'): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(label)), ms);
-    p.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
-  });
+function normalizeTitle(s: string) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function isNearDuplicate(a: { title: string }, b: { title: string }) {
+  const ta = normalizeTitle(a.title);
+  const tb = normalizeTitle(b.title);
+  if (ta === tb) return true;
+  return ta.includes(tb) || tb.includes(ta);
+}
+async function withTimeout<T>(p: Promise<T>, ms: number, tag = 'timeout'): Promise<T> {
+  let t: any;
+  const timeout = new Promise<T>((_, rej) => (t = setTimeout(() => rej(new Error(tag)), ms)));
+  try {
+    const out = await Promise.race([p, timeout]);
+    clearTimeout(t);
+    // @ts-ignore
+    return out;
+  } catch (e) {
+    clearTimeout(t);
+    throw e;
+  }
 }
 
 /* ------------------------------------------------------------------ */
-/* Step 1 — CV parsing                                                */
+/* CV                                                                 */
 /* ------------------------------------------------------------------ */
 export async function analyzeCVFromText(cvText: string) {
   const systemPrompt = `Return strict JSON:
@@ -42,7 +65,9 @@ export async function analyzeCVFromText(cvText: string) {
 /* ------------------------------------------------------------------ */
 export async function analyzeJobFromText(jobText: string) {
   const systemPrompt = `Return strict JSON (response_format enforce):
-{"company_name":"","job_title":"","required_profile":[],"responsibilities":[]}`;
+{"company_name":"","job_title":"","required_profile":[],"responsibilities":[],"company_summary":""}
+Rules:
+- "company_summary" is a concise, neutral paragraph (<= 120 words) describing the company (what it does, market, geographies, key products/segments).`;
   const resp = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [
@@ -59,7 +84,8 @@ export async function analyzeJobFromText(jobText: string) {
     company_name: parsed.company_name ?? '',
     job_title: parsed.job_title ?? '',
     required_profile: Array.isArray(parsed.required_profile) ? parsed.required_profile : [],
-    responsibilities: Array.isArray(parsed.responsibilities) ? parsed.responsibilities : []
+    responsibilities: Array.isArray(parsed.responsibilities) ? parsed.responsibilities : [],
+    company_summary: typeof parsed.company_summary === 'string' ? parsed.company_summary : ''
   };
 }
 
@@ -68,40 +94,42 @@ export async function analyzeJobFromText(jobText: string) {
 /* ------------------------------------------------------------------ */
 export async function generateSWOT(payload: {
   company_name?: string;
+  company_summary?: string;
   existing?: { strengths?: string[]; weaknesses?: string[]; opportunities?: string[]; threats?: string[] };
 }) {
-  const { company_name, existing } = payload || {};
+  const { company_name, company_summary, existing } = payload || {};
 
   const systemPrompt = `Return strict JSON with exactly these keys.
 {"strengths":[],"weaknesses":[],"opportunities":[],"threats":[]}
 Rules:
 - Arrays only. 3–8 concise bullet strings per array.
 - No markdown, numbers, or emojis, just short phrases.
-- Take into account the company name if provided, to contextualize the SWOT
+- Take into account the company name if provided, and the optional company summary context, to contextualize the SWOT
 - If 'existing' contains items, complement them (avoid duplicates, add missing angles).`;
 
   const userContent = {
     company_name: company_name ?? null,
+    company_summary: company_summary ?? null,
     existing: existing ?? null
   };
 
   const resp = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
-    temperature: 0.4,
-    max_tokens: 800,
+    temperature: 0,
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: JSON.stringify(userContent) }
     ]
   });
+  const d = JSON.parse(resp.choices?.[0]?.message?.content ?? '{}');
 
-  const parsed = JSON.parse(resp.choices?.[0]?.message?.content ?? '{}');
+  const arr = (x: any) => (Array.isArray(x) ? x : []);
   return {
-    strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
-    weaknesses: Array.isArray(parsed.weaknesses) ? parsed.weaknesses : [],
-    opportunities: Array.isArray(parsed.opportunities) ? parsed.opportunities : [],
-    threats: Array.isArray(parsed.threats) ? parsed.threats : []
+    strengths: arr(d.strengths),
+    weaknesses: arr(d.weaknesses),
+    opportunities: arr(d.opportunities),
+    threats: arr(d.threats)
   };
 }
 
@@ -110,6 +138,7 @@ Rules:
 /* ------------------------------------------------------------------ */
 export async function generateBusinessModel(payload: {
   company_name?: string;
+  company_summary?: string;
   existing?: {
     keyPartners?: string[];
     keyActivities?: string[];
@@ -122,22 +151,25 @@ export async function generateBusinessModel(payload: {
     revenueStreams?: string[];
   };
 }) {
-  const { company_name, existing } = payload || {};
+  const { company_name, company_summary, existing } = payload || {};
 
   const systemPrompt = `Return strict JSON with exactly these keys.
 {"keyPartners":[],"keyActivities":[],"keyResources":[],"valuePropositions":[],"customerRelationships":[],"channels":[],"customerSegments":[],"costStructure":[],"revenueStreams":[]}
 Rules:
-- Arrays only. 3–8 concise bullet strings per array.
-- No markdown, numbers, or emojis, just short phrases.
-- Use the company name if provided to contextualize likely partners, channels, segments, etc.
+- Arrays only. 3–8 bullets per key.
+- No markdown or numbering, just short phrases.
+- Factor in the company name and (if provided) the company summary for context.
 - If 'existing' contains items, complement them (avoid duplicates, add missing angles).`;
 
-  const userContent = { company_name: company_name ?? null, existing: existing ?? null };
+  const userContent = {
+    company_name: company_name ?? null,
+    company_summary: company_summary ?? null,
+    existing: existing ?? null
+  };
 
   const resp = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
-    temperature: 0.4,
-    max_tokens: 1200,
+    temperature: 0,
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: systemPrompt },
@@ -171,26 +203,21 @@ export type MatchProfileInput = {
   experience: string[];
   skills: string[];
 };
-
-export type MatchResult = {
-  targetType: 'requirement' | 'responsibility';
-  targetIndex: number; // index in the corresponding list
+export type MatchProfile = {
+  targetType: 'requirement'|'responsibility';
+  targetIndex: number;
   targetText: string;
-
-  // scoring payload
   skill: string;
-  grade: 'High' | 'Moderate' | 'Low';
-  score: number;          // 0..100
+  grade: 'High'|'Moderate'|'Low';
+  score: number;
   reasoning: string;
 };
 
-export type MatchingResults = {
-  overallScore: number;   // 0..100
-  matches: MatchResult[];
-  distribution: { high: number; moderate: number; low: number };
-};
+export async function matchProfile(input: MatchProfileInput) {
+  const { requirements, responsibilities, education, experience, skills } = input || {};
+  const reqs = Array.isArray(requirements) ? requirements : [];
+  const resps = Array.isArray(responsibilities) ? responsibilities : [];
 
-export async function matchProfile(input: MatchProfileInput): Promise<MatchingResults> {
   // Prompt EN
   const system = `You are an expert talent screener.
   Compare a candidate profile against a job description and output STRICT JSON only (no extra text). 
@@ -206,199 +233,44 @@ export async function matchProfile(input: MatchProfileInput): Promise<MatchingRe
   Scoring rules:
   - Score: 0–100 (100 = perfect fit).
   - Grade: High (>=75), Moderate (50–74), Low (<50).
-  - Provide a concise, factual reasoning (1–2 sentences).
-  - Compute overallScore as a weighted average: requirements 60%, responsibilities 40%.
+  - Always provide a one-sentence reasoning.
 
-  Return EXACTLY this JSON shape:
-  {
-    "overallScore": 0,
-    "matches": [
-      {
-        "targetType":"requirement|responsibility",
-        "targetIndex": 0,
-        "targetText": "",
-        "skill": "",
-        "grade": "High|Moderate|Low",
-        "score": 0,
-        "reasoning": ""
-      }
-    ],
-    "distribution": { "high":0, "moderate":0, "low":0 }
-  }`;
+  Return a JSON array of objects with fields:
+  { "targetType": "...", "targetIndex":0, "targetText":"", "skill":"", "grade":"High|Moderate|Low", "score":0, "reasoning":"" }`;
 
-  const userPayload = {
-    instructions: {
-      weights: { requirements: 0.6, responsibilities: 0.4 },
-      thresholds: { high: 75, moderate: 50 }
-    },
-    data: input
-  };
+  const user = JSON.stringify({
+    requirements: reqs,
+    responsibilities: resps,
+    education: Array.isArray(education) ? education : [],
+    experience: Array.isArray(experience) ? experience : [],
+    skills: Array.isArray(skills) ? skills : []
+  });
 
-  const completion = await openai.chat.completions.create({
+  const resp = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
-    temperature: 0.2,
-    response_format: { type: 'json_object' },
+    temperature: 0,
     messages: [
       { role: 'system', content: system },
-      { role: 'user', content: JSON.stringify(userPayload) }
+      { role: 'user', content: user },
     ],
-    max_tokens: 1400
   });
 
-  const raw = completion.choices?.[0]?.message?.content ?? '{}';
-  let parsed: any = {};
-  try { parsed = JSON.parse(raw); } catch { parsed = {}; }
-
-  const matchesRaw = Array.isArray(parsed.matches) ? parsed.matches : [];
-
-  const matches: MatchResult[] = matchesRaw.map((m: any): MatchResult => {
-    // sanitize target fields
-    const tType = String(m?.targetType ?? '').toLowerCase();
-    const targetType: 'requirement' | 'responsibility' =
-      tType === 'responsibility' ? 'responsibility' : 'requirement';
-
-    const targetIndex = Number.isFinite(Number(m?.targetIndex))
-      ? Math.max(0, Math.round(Number(m.targetIndex)))
-      : 0;
-
-    const targetText = String(m?.targetText ?? '');
-
-    // scoring
-    const score = clamp(toInt(m?.score ?? 0));
-    const gradeFromScore = score >= 75 ? 'High' : score >= 50 ? 'Moderate' : 'Low';
-    let grade = String(m?.grade ?? '').toLowerCase();
-    if (grade.startsWith('high')) grade = 'High';
-    else if (grade.startsWith('moder')) grade = 'Moderate';
-    else if (grade.startsWith('low')) grade = 'Low';
-    else grade = gradeFromScore;
-
-    return {
-      targetType,
-      targetIndex,
-      targetText,
-      skill: String(m?.skill ?? m?.source ?? m?.target ?? '—'),
-      grade: grade as MatchResult['grade'],
-      score,
-      reasoning: String(m?.reasoning ?? '')
-    };
-  });
-
-  // Distribution recomputed server-side (defensive)
-  const distribution = matches.reduce(
-    (acc, m) => {
-      if (m.score >= 75) acc.high += 1;
-      else if (m.score >= 50) acc.moderate += 1;
-      else acc.low += 1;
-      return acc;
-    },
-    { high: 0, moderate: 0, low: 0 }
-  );
-
-  const overallScore = clamp(toInt(parsed.overallScore ?? 0));
-
-  return {
-    overallScore,
-    matches,
-    distribution
-  };
-}
-
-/* ------------------------------------------------------------------ */
-/* Step 5 — Why Suggestion                                            */
-/* ------------------------------------------------------------------ */
-
-export async function generateWhySuggestions(payload: {
-  cv: { skills: string[]; education: string[]; experience: string[] };
-  job: { requirements: string[]; responsibilities: string[]; [k: string]: any };
-  matches?: { overallScore?: number; matches?: any[] };
-  swotAndBmc?: {
-    strengths?: string[]; weaknesses?: string[]; opportunities?: string[]; threats?: string[];
-    bmc?: {
-      valuePropositions?: string[]; customerSegments?: string[];
-      keyActivities?: string[]; keyResources?: string[]; channels?: string[];
-    };
-  };
-}) {
-  // 🔒 Sortie attendue: JSON strict
-  const system = `
-Return STRICT JSON with exactly these keys and string values:
-{
-  "whyCompany": "",
-  "whyRole": "",
-  "whyYou": ""
-}
-Guidelines:
-- Write concise, specific, high-signal answers (3–6 sentences each).
-- No bullet points, no markdown, no emojis, no lists.
-- Use concrete details from inputs (e.g., responsibilities, requirements, top skills, SWOT opportunities, BMC value propositions/channels/segments).
-- Show credibility with tiny evidence (impact, metrics, relevant skills).
-- Avoid generic platitudes (“passionate”, “fast learner”) unless tied to evidence.
-- If inputs appear French, answer in French; otherwise answer in English.
-- Do not include any preambles or explanations. Output valid JSON only.
-`;
-
-  // Construit un objet utilisateur compact pour le prompt
-  const userPayload = {
-    job: {
-      title: payload.job?.job_title ?? payload.job?.title ?? null,
-      company: payload.job?.company_name ?? payload.job?.company ?? null,
-      requirements: payload.job?.requirements ?? [],
-      responsibilities: payload.job?.responsibilities ?? [],
-      description: payload.job?.job_description ?? null
-    },
-    cv: {
-      skills: payload.cv?.skills ?? [],
-      education: payload.cv?.education ?? [],
-      experience: payload.cv?.experience ?? []
-    },
-    matches: payload.matches ?? null,
-    swot: {
-      strengths: payload.swotAndBmc?.strengths ?? [],
-      weaknesses: payload.swotAndBmc?.weaknesses ?? [],
-      opportunities: payload.swotAndBmc?.opportunities ?? [],
-      threats: payload.swotAndBmc?.threats ?? []
-    },
-    bmc: payload.swotAndBmc?.bmc ?? null
-  };
-
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0.5,
-    max_tokens: 900,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: JSON.stringify(userPayload) }
-    ]
-  });
-
-  // Parse défensif
-  const raw = completion.choices?.[0]?.message?.content ?? "{}";
-  let parsed: any = {};
-  try { parsed = JSON.parse(raw); } catch { parsed = {}; }
-
-  const str = (v: any) => (typeof v === "string" ? v.trim() : "");
-  const fallbackWhyCompany =
-    userPayload.swot.opportunities?.[0]
-      ? `Je suis motivé par l’opportunité autour de ${userPayload.swot.opportunities[0]}, en lien direct avec mon expérience et l’impact que je peux apporter.`
-      : `Je suis réellement aligné avec votre mission et votre trajectoire, et je vois une forte cohérence avec mon parcours.`;
-
-  const topSkill =
-    (userPayload.matches?.matches?.[0]?.skill) ||
-    (userPayload.cv.skills?.[0]) ||
-    "mes compétences clés";
-
-  const fallbackWhyRole =
-    `Le rôle s’aligne sur mes forces (ex. ${topSkill}) et les responsabilités que j’apprécie, avec une contribution directe aux priorités de l’équipe.`;
-
-  const fallbackWhyYou =
-    `Vous devriez me recruter pour mes forces en ${userPayload.cv.skills?.slice(0,3).join(", ") || topSkill} et mon historique de résultats mesurables.`;
-
-  return {
-    whyCompany: str(parsed.whyCompany) || fallbackWhyCompany,
-    whyRole:    str(parsed.whyRole)    || fallbackWhyRole,
-    whyYou:     str(parsed.whyYou)     || fallbackWhyYou
-  };
+  let content = resp.choices?.[0]?.message?.content ?? '[]';
+  try {
+    const parsed = JSON.parse(content);
+    if (Array.isArray(parsed)) {
+      return parsed.map((m: any) => ({
+        targetType: (m?.targetType === 'requirement' || m?.targetType === 'responsibility') ? m.targetType : 'requirement',
+        targetIndex: toInt(m?.targetIndex),
+        targetText: String(m?.targetText ?? ''),
+        skill: String(m?.skill ?? ''),
+        grade: String(m?.grade ?? 'Low'),
+        score: clamp(toInt(m?.score)),
+        reasoning: String(m?.reasoning ?? ''),
+      })) as MatchProfile[];
+    }
+  } catch {}
+  return [];
 }
 
 /* ------------------------------------------------------------------ */
@@ -418,79 +290,23 @@ const topNewsOutSchema = z.object({
   }))
 });
 
-// Normalisation & dédup (titres proches)
-function normalizeTitle(s: string) {
-  return (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
-}
-function isNearDuplicate(a: RawHit, b: RawHit) {
-  const na = normalizeTitle(a.title);
-  const nb = normalizeTitle(b.title);
-  if (!na || !nb) return false;
-  if (na === nb) return true;
-  const shorter = na.length < nb.length ? na : nb;
-  const longer = na.length < nb.length ? nb : na;
-  return shorter.length > 20 && longer.includes(shorter);
-}
-
-// --- Provider: NewsAPI.org ---
-async function newsSearchWithNewsAPI({ q, sinceISO, limit }: { q: string; sinceISO: string; limit: number }): Promise<RawHit[]> {
-  const key = process.env.NEWSAPI_KEY;
-  if (!key) return [];
-  const from = sinceISO.slice(0, 10);
-  const url = new URL('https://newsapi.org/v2/everything');
-  url.searchParams.set('q', q);
-  url.searchParams.set('from', from);
-  url.searchParams.set('sortBy', 'publishedAt');
-  url.searchParams.set('language', 'en');
-  url.searchParams.set('pageSize', String(Math.min(Math.max(limit, 1), 100)));
-
-  const r = await fetch(url.toString(), { headers: { 'X-Api-Key': key } });
-  if (!r.ok) return [];
-  const d: any = await r.json();
-  const articles: any[] = Array.isArray(d?.articles) ? d.articles : [];
-  return articles.map(a => ({
-    title: a?.title || '',
-    url: a?.url || '',
-    snippet: a?.description || a?.content || '',
-    date: a?.publishedAt || '',
-    source: a?.source?.name || '',
-  })).filter(x => x.title && x.url);
-}
-
-// --- Provider: Google News RSS (gratuit, pas de clé) ---
-async function newsSearchWithGoogleNewsRSS(
-  { q, sinceISO, limit }: { q: string; sinceISO: string; limit: number }
-): Promise<RawHit[]> {
+// --- helpers for news search ---
+async function rssSearch({ q, sinceISO }: { q: string; sinceISO: string }): Promise<RawHit[]> {
   try {
     const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
-    const fetchP = fetch(url, {
-      headers: { 'User-Agent': 'InterviewAceBot/1.0', 'Accept': 'application/rss+xml,text/xml,*/*' },
-    });
-
-    // ⏱️ coupe court si Google News est lent
-    const r = await withTimeout(fetchP, 4000, 'rss_fetch_timeout');
-    if (!r.ok) return [];
+    const r = await fetch(url);
     const xml = await r.text();
-
-    const parser = new XMLParser({ ignoreAttributes: false });
-    const feed = parser.parse(xml);
-    const items = feed?.rss?.channel?.item ?? [];
-    if (!Array.isArray(items)) return [];
-
-    const sinceTs = new Date(sinceISO).getTime();
-    const take = Math.max(limit * 10, 40);
-
-    const hits: RawHit[] = items.slice(0, take).map((it: any) => {
-      const title = String(it?.title || '').trim();
-      const url = String(it?.link || '').trim();
-      const rawDesc = String(it?.description || '');
-      const snippet = rawDesc.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-      const date = String(it?.pubDate || '').trim();
-      const srcText = (it?.source?.['#text'] ?? it?.source) as string | undefined;
-      return { title, url, snippet, date, source: srcText || 'Google News' };
-    }).filter(x => x.title && x.url);
-
+    const p = new XMLParser();
+    const parsed = p.parse(xml);
+    const items = parsed?.rss?.channel?.item ?? [];
+    const hits: RawHit[] = items.map((it: any) => ({
+      title: String(it?.title ?? ''),
+      url: String(it?.link ?? ''),
+      date: String(it?.pubDate ?? ''),
+      source: String(it?.source ?? '') || (String(it?.title ?? '').split(' - ').pop() ?? '')
+    }));
     // filtre fenêtre temporelle
+    const sinceTs = new Date(sinceISO).getTime();
     return hits.filter(h => {
       const t = new Date(h.date || '').getTime();
       return Number.isFinite(t) ? (t >= sinceTs) : true;
@@ -504,93 +320,37 @@ async function newsSearchWithGoogleNewsRSS(
 async function newsSearchWithBing({ q, sinceISO, limit }: { q: string; sinceISO: string; limit: number }): Promise<RawHit[]> {
   const key = process.env.BING_SEARCH_V7_KEY;
   if (!key) return [];
-  const url = new URL('https://api.bing.microsoft.com/v7.0/search');
+  const url = new URL('https://api.bing.microsoft.com/v7.0/news/search');
   url.searchParams.set('q', q);
-  url.searchParams.set('count', String(Math.min(Math.max(limit, 1), 50)));
-  url.searchParams.set('responseFilter', 'News,Webpages');
-  url.searchParams.set('mkt', 'en-US');
-
-  const r = await fetch(url.toString(), { headers: { 'Ocp-Apim-Subscription-Key': key } });
-  if (!r.ok) return [];
-  const d: any = await r.json();
-
-  const hits: RawHit[] = [];
-
-  const news = d?.news?.value ?? d?.value ?? [];
-  if (Array.isArray(news)) {
-    for (const n of news) {
-      hits.push({
-        title: n?.name || '',
-        url: n?.url || '',
-        snippet: n?.description || '',
-        date: n?.datePublished || n?.datePublishedFreshnessText || '',
-        source: n?.provider?.[0]?.name || 'Bing News',
-      });
-    }
-  }
-
-  const web = d?.webPages?.value ?? [];
-  if (Array.isArray(web)) {
-    for (const w of web) {
-      hits.push({
-        title: w?.name || '',
-        url: w?.url || '',
-        snippet: w?.snippet || '',
-        date: w?.dateLastCrawled || '',
-        source: 'Web',
-      });
-    }
-  }
-
-  return hits.filter(x => x.title && x.url);
+  url.searchParams.set('count', String(limit));
+  url.searchParams.set('freshness', 'Month');
+  const r = await fetch(url, { headers: { 'Ocp-Apim-Subscription-Key': key }});
+  const d = await r.json();
+  const items = Array.isArray(d?.value) ? d.value : [];
+  return items.map((it: any) => ({
+    title: String(it?.name ?? ''),
+    url: String(it?.url ?? ''),
+    date: String(it?.datePublished ?? ''),
+    source: String(it?.provider?.[0]?.name ?? '')
+  }));
 }
 
-// --- Sélection du provider ---
-// --- Sélection du provider (avec fallback gratuit) ---
-async function newsSearch(
-  { q, sinceISO, limit }: { q: string; sinceISO: string; limit: number }
-): Promise<RawHit[]> {
-  const cap = Math.max(limit, 30);
-
-  // lance tout en parallèle, chacun avec son timeout dédié
-  const tasks = [
-    (async () => {
-      try { return await withTimeout(newsSearchWithNewsAPI({ q, sinceISO, limit: cap }), 3500, 'newsapi_timeout'); }
-      catch { return []; }
-    })(),
-    (async () => {
-      try { return await withTimeout(newsSearchWithBing({ q, sinceISO, limit: cap }), 3500, 'bing_timeout'); }
-      catch { return []; }
-    })(),
-    (async () => {
-      try { return await newsSearchWithGoogleNewsRSS({ q, sinceISO, limit: cap }); } // déjà time-outé dedans
-      catch { return []; }
-    })(),
-  ];
-
-  const settled = await Promise.allSettled(tasks);
-  // prends le premier non-vide dans l’ordre: NewsAPI, Bing, RSS
-  for (const s of settled) {
-    if (s.status === 'fulfilled' && Array.isArray(s.value) && s.value.length) {
-      return s.value;
-    }
-  }
-  // sinon concatène tout ce qui a répondu (même vide) — au cas où
-  const all: RawHit[] = [];
-  for (const s of settled) {
-    if (s.status === 'fulfilled' && Array.isArray(s.value)) all.push(...s.value);
-  }
-  return all;
+async function newsSearch({ q, sinceISO, limit }: { q: string; sinceISO: string; limit: number }): Promise<RawHit[]> {
+  // combine light providers
+  const a = await rssSearch({ q, sinceISO }).catch(() => []);
+  const b = await newsSearchWithBing({ q, sinceISO, limit: limit * 2 }).catch(() => []);
+  return [...a, ...b].slice(0, limit * 4);
 }
 
-// --- Fonction principale exportée (appelée par la route /api/ai/top-news) ---
 export async function getTopNewsServer({
   company_name,
+  company_summary,
   months = 18,
   limit = 3,
   callLLM,
 }: {
   company_name: string;
+  company_summary?: string;
   months?: number;
   limit?: number;
   callLLM: (prompt: string, opts?: { json?: boolean }) => Promise<any>;
@@ -602,7 +362,7 @@ export async function getTopNewsServer({
   const sinceISO = subMonths(new Date(), months).toISOString();
 
   // 1) Recherche
-  const q = `"${company_name}" (funding OR partnership OR acquisition OR launch OR product OR earnings OR leadership OR investigation OR lawsuit OR expansion)`;
+  const q = `"${company_name}" (funding OR partnership OR acquisition OR product OR launch OR legal OR earnings OR leadership OR investigation OR lawsuit OR expansion)`;
   const raw = await newsSearch({ q, sinceISO, limit: 40 });
 
   // 2) Fenêtre temporelle
@@ -628,6 +388,7 @@ export async function getTopNewsServer({
   // 4) Sélection via LLM (thèmes distincts)
   const toolInput = JSON.stringify({
     company_name,
+    company_summary,
     window_months: months,
     sinceISO,
     candidates: dedup.slice(0, 40),
@@ -638,12 +399,13 @@ export async function getTopNewsServer({
 You are selecting the TOP ${limit} distinct pieces of company news for interview preparation.
 Rules:
 - Each pick MUST represent a different theme (funding, product launch, partnership, legal, earnings, leadership, expansion, etc.).
+- Use the provided company summary (if any) to disambiguate entities with the same name and prefer news about the correct company.
 - Prefer high-impact, authoritative sources (company newsroom, filings, tier-1 outlets).
 - If multiple links describe the same event, pick the most authoritative & recent one.
 Return STRICT JSON OBJECT:
 {
   "items": [
-    { "title": "", "summary": "<=80 words, factual", "date": "ISO if known", "url": "https://...", "source": "Publisher", "category": "theme" }
+    { "title": "", "summary": "<=80 words, factual", "date": "ISO or YYYY-MM-DD", "url": "https://...", "source": "Publisher", "category": "theme" }
   ]
 }
 INPUT:
@@ -654,15 +416,14 @@ ${toolInput}
   try {
     llmOut = await withTimeout(callLLM(prompt, { json: true }), 6000, 'llm_timeout');
   } catch {
-    // Fallback simple
-    return dedup.slice(0, limit).map(h => ({
-      title: h.title,
-      summary: h.snippet || '',
-      date: h.date || '',
-      url: h.url,
-      source: h.source || '',
-      category: undefined,
-    }));
+    // tente une version non-json
+    try {
+      llmOut = await withTimeout(callLLM(prompt, { json: false }), 6000, 'llm_timeout2');
+      if (typeof llmOut === 'string') {
+        const m = llmOut.match(/\{[\s\S]*\}$/);
+        if (m) llmOut = JSON.parse(m[0]);
+      }
+    } catch {}
   }
 
   // 5) Normalisation
@@ -688,5 +449,65 @@ ${toolInput}
   // 6) Tri par date (desc) et tranche
   return parsed.data.items
     .slice(0, limit)
-    .sort((a, b) => (new Date(b.date || 0).getTime() || 0) - (new Date(a.date || 0).getTime() || 0));
+    .map(it => ({
+      title: it.title,
+      summary: it.summary,
+      date: it.date || '',
+      url: it.url,
+      source: it.source || '',
+      category: it.category
+    }));
+}
+
+/* ------------------------------------------------------------------ */
+/* Step 2b — Company History (Timeline)                                */
+/* ------------------------------------------------------------------ */
+export async function generateCompanyHistory(payload: {
+  company_name: string;
+  company_summary?: string | null;
+  limit?: number; // 5-12 key milestones
+}) {
+  const { company_name, company_summary, limit = 8 } = payload || {};
+  if (!company_name) throw new Error('company_name is required');
+
+  const systemPrompt = `Return STRICT JSON with exactly this shape:
+{"timeline":[{"date":"","title":"","description":"","category":"","impact":""}]}
+Rules:
+- Provide ${Math.max(5, Math.min(12, Number(limit) || 8))} key milestones in chronological order (oldest first).
+- Use ISO-like dates when known: "YYYY-MM-DD" if exact, otherwise "YYYY" or "YYYY-MM".
+- "title" max 12 words. "description" max 40 words, factual and concise.
+- Include a variety: founding, funding/rounds, IPO/delistings, landmark product launches, major partnerships, acquisitions/mergers, leadership changes, pivots, global expansions, legal/regulatory events.
+- If uncertain, omit the field rather than guessing. No markdown or commentary.`;
+
+  const userContent = {
+    company_name,
+    company_summary: company_summary ?? null,
+    limit: Math.max(5, Math.min(12, Number(limit) || 8)),
+  };
+
+  const resp = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    temperature: 0,
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: JSON.stringify(userContent) },
+    ],
+  });
+
+  let out: any = {};
+  try {
+    out = JSON.parse(resp.choices?.[0]?.message?.content ?? '{}');
+  } catch {
+    out = {};
+  }
+
+  const arr = (x: any) => (Array.isArray(x) ? x : []);
+  return { timeline: arr(out.timeline).map((it: any) => ({
+    date: String(it?.date ?? '').trim(),
+    title: String(it?.title ?? '').trim(),
+    description: String(it?.description ?? '').trim(),
+    category: it?.category ? String(it.category) : undefined,
+    impact: it?.impact ? String(it.impact) : undefined,
+  })) };
 }
