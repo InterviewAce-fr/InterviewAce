@@ -4,10 +4,10 @@ import Handlebars from "handlebars";
 import dayjs from "dayjs";
 import { htmlToPDF } from "./pdfEngine";
 
+/* ----------------------- Helpers Handlebars (une fois) ---------------------- */
 let compiled: Handlebars.TemplateDelegate | null = null;
 let helpersRegistered = false;
 
-/* ------------------------- Handlebars helpers ------------------------- */
 function registerHelpers() {
   if (helpersRegistered) return;
   helpersRegistered = true;
@@ -15,238 +15,177 @@ function registerHelpers() {
   Handlebars.registerHelper("formatDate", (iso?: string) =>
     iso ? dayjs(iso).format("DD/MM/YYYY HH:mm") : ""
   );
-
+  Handlebars.registerHelper("join", (arr: any[], sep?: string) =>
+    Array.isArray(arr) ? arr.join(sep || ", ") : ""
+  );
+  Handlebars.registerHelper("percent", (v: any) =>
+    typeof v === "number" ? `${Math.round(v)}%` : v ?? ""
+  );
+  Handlebars.registerHelper("eq", (a: any, b: any) => a === b);
   Handlebars.registerHelper("notEmpty", (v: any) =>
     Array.isArray(v) ? v.length > 0 : !!v
   );
-
-  Handlebars.registerHelper("or", (a: any, b: any) => (!!a) || (!!b));
-  Handlebars.registerHelper("and", (a: any, b: any) => (!!a) && (!!b));
 }
 
-/* ------------------------------ utils -------------------------------- */
-function toArray(v: any): string[] {
-  if (!v) return [];
-  if (Array.isArray(v)) return v.filter(Boolean).map(String);
-  const s = String(v);
-  return s
-    .split(/\r?\n|;|\||,/g)
-    .map((x) => x.trim())
-    .filter(Boolean);
-}
-
-function tryJson<T = any>(v: any): T | null {
-  if (!v || typeof v !== "string") return null;
-  try { return JSON.parse(v); } catch { return null; }
-}
-
-function normalizeNewsItem(item: any) {
-  if (!item) return null;
-  if (typeof item === "string") return { title: item };
-  return {
-    title: item.title || item.t || "",
-    source: item.source || item.s || "",
-    url: item.url || item.link || "",
-    date: item.date || item.published_at || item.publishedAt || "",
-    summary: item.summary || item.snippet || "",
-  };
-}
-
-/* -------- mapping preparationData (steps) -> template attendu ---------- */
-function normalizeForTemplate(incoming: any) {
-  // on accepte soit { preparationData: {...} } soit un objet directement
-  const prep = incoming?.preparationData ? incoming.preparationData : incoming;
-
-  const s1 = prep?.step_1_data || {};
-  const s2 = typeof prep?.step_2_data === "string" ? (tryJson(prep.step_2_data) || {}) : (prep?.step_2_data || {});
-  const s3 = typeof prep?.step_3_data === "string" ? (tryJson(prep.step_3_data) || {}) : (prep?.step_3_data || {});
-  const s4 = typeof prep?.step_4_data === "string" ? (tryJson(prep.step_4_data) || {}) : (prep?.step_4_data || {});
-  const s5 = typeof prep?.step_5_data === "string" ? (tryJson(prep.step_5_data) || {}) : (prep?.step_5_data || {});
-  const s6 = typeof prep?.step_6_data === "string" ? (tryJson(prep.step_6_data) || {}) : (prep?.step_6_data || {});
-
-  /* -------- header (candidate / role / company) -------- */
-  const role = {
-    title: s1?.job_title || prep?.title || s1?.title || "",
-  };
-
-  const topNewsRaw =
-    incoming?.topNews ||
-    prep?.topNews ||
-    s3?.topNews ||
-    s3?.top_news ||
-    s2?.topNews ||
-    s2?.top_news ||
-    [];
-
-  const company = {
-    name: s1?.company_name || s1?.company || "",
-    website: s1?.company_website || s1?.website || "",
-    /* Business model (on couvre un maximum de variantes) */
-    businessModel:
-      s2?.business_model ||
-      s2?.businessModel ||
-      s2?.model ||
-      s2?.value_propositions ||
-      s2?.value_proposition ||
-      s2?.summary ||
-      "",
-    revenueStreams:
-      toArray(s2?.revenue_streams || s2?.revenues || s2?.revenue || s2?.streams),
-    pricing: toArray(s2?.pricing || s2?.prices || s2?.price),
-    keyCustomers:
-      toArray(s2?.customer_segments || s2?.segments || s2?.customers),
-    topNews: Array.isArray(topNewsRaw)
-      ? topNewsRaw.map(normalizeNewsItem).filter(Boolean)
-      : [],
-  };
-
-  /* ----------------- Strategy (ex-SWOT) depuis step_3 ----------------- */
-  const strategy = {
-    strengths: toArray(s3?.strengths || s3?.plus || s3?.assets),
-    weaknesses: toArray(s3?.weaknesses || s3?.gaps || s3?.risks),
-    opportunities: toArray(s3?.opportunities || s3?.ops),
-    threats: toArray(s3?.threats || s3?.competition || s3?.threat),
-  };
-
-  /* -------- Profile & Experience matching (step_4 / service match) ----- */
-  const match =
-    s4?.profileMatch || s4?.matchProfile || s4?.match_profile || s4?.match || null;
-
-  let items: Array<{ requirement: string; evidence: string; score?: number }> = [];
-  let matchScore: number | undefined;
-  let summary: string | undefined;
-
-  if (match) {
-    matchScore = match.matchScore ?? match.score ?? undefined;
-    summary = match.summary ?? undefined;
-
-    const src = Array.isArray(match.items)
-      ? match.items
-      : Array.isArray(match.requirements)
-      ? match.requirements
-      : [];
-
-    items = src.map((it: any) => {
-      // on couvre plusieurs schémas de clés possibles
-      const requirement =
-        it.requirement || it.label || it.name || it.skill || "Requirement";
-      const evidence =
-        it.evidence || it.note || it.experience || it.details || "";
-      const score =
-        typeof it.score === "number"
-          ? it.score
-          : (typeof it.matchScore === "number" ? it.matchScore : undefined);
-      return { requirement, evidence, score };
-    });
-  } else {
-    // fallback auto à partir de skills/achievements si pas d’objet de match
-    const raw = [
-      ...toArray(s4?.key_skills),
-      ...toArray(s4?.achievements),
-    ];
-    items = raw.map((txt) => ({
-      requirement: "Skill/Achievement",
-      evidence: txt,
-    }));
-    summary = s4?.personal_mission || undefined;
-  }
-
-  const profileMatch = { matchScore, summary, items };
-
-  /* ------------------------------ WHY (step_5) ------------------------- */
-  const why = {
-    // tableaux
-    whyCompany: toArray(s5?.why_company || s5?.why_them || s5?.why_this_company),
-    whyRole: toArray(s5?.why_role || s5?.why_this_role),
-    whyYou: [
-      ...toArray(s5?.why_you),
-      ...toArray(s5?.why_now),
-      ...toArray(s5?.elevator_pitch),
-    ],
-  };
-
-  /* --------------------------- Q&A (step_6) ---------------------------- */
-  // On accepte de multiples schémas
-  const forCandidateRaw =
-    s6?.questions ||
-    s6?.company_questions ||
-    s6?.companyToCandidate ||
-    s6?.questions_for_candidate ||
-    s6?.questions_company_to_candidate ||
-    [];
-
-  const forCompanyRaw =
-    s6?.questions_to_ask ||
-    s6?.candidate_questions ||
-    s6?.candidateToCompany ||
-    s6?.questions_for_company ||
-    s6?.questions_to_company ||
-    [];
-
-  const toQ = (q: any) => {
-    if (typeof q === "string") return { question: q, answer: "", note: "" };
-    return {
-      question: q?.question || q?.q || "",
-      answer: q?.answer || "",
-      note: q?.tips || q?.note || "",
-    };
-    };
-
-  const interview = {
-    questionsForCandidate: Array.isArray(forCandidateRaw) ? forCandidateRaw.map(toQ) : [],
-    questionsForCompany: Array.isArray(forCompanyRaw) ? forCompanyRaw.map(toQ) : [],
-  };
-
-  return {
-    generatedAt: new Date().toISOString(),
-    candidate: {
-      name:
-        s4?.candidate_name ||
-        prep?.candidate_name ||
-        (prep?.user && prep?.user?.name) ||
-        "—",
-    },
-    company,
-    role,
-    strategy,
-    profileMatch,
-    why,
-    interview,
-  };
-}
-
-/* ----------------------------- template load ---------------------------- */
+/* ------------------------------ Template path ------------------------------ */
 function templatePath(): string {
-  const candidates = [
-    path.join(__dirname, "../templates/report.handlebars"),
-    path.join(__dirname, "../../src/templates/report.handlebars"),
-    path.join(process.cwd(), "src", "templates", "report.handlebars"),
-  ];
-  for (const p of candidates) if (fs.existsSync(p)) return p;
-  throw new Error("Template introuvable: src/templates/report.handlebars");
+  const distPath = path.join(__dirname, "../templates/report.handlebars");
+  if (fs.existsSync(distPath)) return distPath;
+  const devPath = path.join(__dirname, "../../src/templates/report.handlebars");
+  if (fs.existsSync(devPath)) return devPath;
+  return path.join(process.cwd(), "src", "templates", "report.handlebars");
 }
 
 function loadTemplate(): Handlebars.TemplateDelegate {
   if (compiled) return compiled;
   registerHelpers();
-  const raw = fs.readFileSync(templatePath(), "utf-8");
-  compiled = Handlebars.compile(raw, { noEscape: true });
+  const filePath = templatePath();
+  const raw = fs.readFileSync(filePath, "utf-8");
+  compiled = Handlebars.compile(raw /* pas de noEscape ici pour la sécurité */);
   return compiled;
 }
 
-/* ----------------------------- rendu & pdf ------------------------------ */
-export function renderReport(data: any): string {
-  const tpl = loadTemplate();
-  const model = normalizeForTemplate(data);
-  const html = tpl(model);
-  try { console.log(`[pdfService] html length = ${html?.length ?? 0}`); } catch {}
-  return html;
+/* ---------------------------- Normalisation utils -------------------------- */
+function toArray(input: any): string[] {
+  if (!input) return [];
+  if (Array.isArray(input)) {
+    return input
+      .map((x) => (typeof x === "string" ? x.trim() : x))
+      .filter(Boolean);
+  }
+  if (typeof input === "string") {
+    return input
+      .split(/\r?\n|•|- |\u2022|;|,/) // coupe raisonnablement
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return [];
 }
 
-export async function generatePDFReport(
-  data: any,
-  _opts?: { landscape?: boolean }
-): Promise<Buffer> {
+function mapTopNews(raw: any): Array<{ title: string; url?: string; source?: string; date?: string; summary?: string }> {
+  const arr = Array.isArray(raw) ? raw : [];
+  return arr.map((n: any) => ({
+    title: n?.title || n?.headline || "",
+    url: n?.url || n?.link || "",
+    source: n?.source || n?.publisher || "",
+    date: n?.date || n?.publishedAt || "",
+    summary: n?.summary || ""
+  })).filter(n => n.title);
+}
+
+/* -------------------------- PREP → modèle du template ---------------------- */
+export function prepareModel(prep: any, opts?: { showGenerateButton?: boolean; isPremium?: boolean }) {
+  const s1 = prep?.step_1_data || {};
+  const s2 = prep?.step_2_data || {};
+  const s3 = prep?.step_3_data || {};
+  const s4 = prep?.step_4_data || {};
+  const s5 = prep?.step_5_data || {};
+  const s6 = prep?.step_6_data || {};
+
+  const titleFromS1 = [s1?.job_title, s1?.company_name].filter(Boolean).join(" at ");
+
+  const model: any = {
+    generatedAt: new Date().toISOString(),
+    title: prep?.title || titleFromS1 || "Interview Preparation",
+    candidate: {
+      name: s1?.candidate_name || prep?.candidate_name || "",
+      email: s1?.candidate_email || prep?.candidate_email || "",
+    },
+    role: {
+      title: s1?.job_title || prep?.job_title || "",
+      location: s1?.location || "",
+      salary: s1?.salary_range || "",
+    },
+    company: {
+      name: s1?.company_name || prep?.company_name || "",
+      website: s1?.company_website || s1?.website || "",
+      description: s1?.company_description || "",
+      // ---- Business model (Step 2)
+      businessModel:
+        s2?.value_propositions ||
+        s2?.business_model ||
+        s2?.summary ||
+        "",
+      revenueStreams: toArray(s2?.revenue_streams || s2?.revenueStreams || s2?.revenues),
+      pricing: toArray(s2?.pricing || s2?.pricingNotes || s2?.pricing_notes),
+      keyCustomers: toArray(s2?.customer_segments || s2?.customers || s2?.segments),
+      // ---- Top news (depuis step_3_data ou équivalent)
+      topNews: mapTopNews(s3?.topNews || s3?.top_news || prep?.topNews),
+    },
+    // ---- Strategy (ex-SWOT) — Step 3
+    strategy: {
+      strengths: toArray(s3?.strengths),
+      weaknesses: toArray(s3?.weaknesses),
+      opportunities: toArray(s3?.opportunities),
+      threats: toArray(s3?.threats),
+    },
+    // ---- Profile & Experience matching — Step 4
+    profileMatch: (function () {
+      const matchScore = s4?.matchScore ?? s4?.match_score ?? s4?.score ?? null;
+      const itemsSrc = Array.isArray(s4?.items) ? s4.items : [];
+      let items = itemsSrc.map((it: any) => ({
+        requirement: it?.requirement || it?.label || it?.name || "",
+        evidence: it?.evidence || it?.note || it?.experience || "",
+        score: typeof it?.score === "number" ? it.score : (typeof it?.match === "number" ? it.match : null),
+      })).filter((x: any) => x.requirement || x.evidence || x.score !== null);
+
+      // fallback: si pas d'items, fabriquer depuis step_1.key_requirements + éventuelles expériences indexées
+      if (!items.length) {
+        const reqs = toArray(s1?.key_requirements);
+        const exps = toArray(s4?.experiences || s4?.key_experiences);
+        items = reqs.map((r: string, i: number) => ({
+          requirement: r,
+          evidence: exps[i] || "",
+          score: null,
+        }));
+      }
+
+      return {
+        matchScore: typeof matchScore === "number" ? matchScore : null,
+        summary: s4?.summary || "",
+        items,
+      };
+    })(),
+    // ---- The Why — Step 5
+    why: {
+      whyCompany: toArray(s5?.why_company || s5?.whyCompany),
+      whyRole: toArray(s5?.why_role || s5?.whyRole),
+      // Concatène "why you" et "why now" si séparés
+      whyYou: [...toArray(s5?.why_you || s5?.whyYou), ...toArray(s5?.why_now || s5?.whyNow)],
+    },
+    // ---- Q&A — Step 6
+    interview: {
+      questionsForCandidate: (function () {
+        const q = Array.isArray(s6?.questions) ? s6?.questions : (Array.isArray(s6?.company_questions) ? s6.company_questions : []);
+        return q.map((x: any) => ({
+          question: x?.question || "",
+          answer: x?.answer || "",
+          note: x?.tips || x?.note || "",
+        })).filter((x: any) => x.question);
+      })(),
+      questionsForCompany: (function () {
+        const q = Array.isArray(s6?.questions_to_ask) ? s6?.questions_to_ask : (Array.isArray(s6?.candidate_questions) ? s6.candidate_questions : []);
+        return q.map((x: any) => (typeof x === "string" ? { question: x } : { question: x?.question || "" }))
+                .filter((x: any) => x.question);
+      })(),
+    },
+    // options d'affichage
+    showGenerateButton: !!opts?.showGenerateButton,
+    isPremium: !!opts?.isPremium,
+    FRONTEND_URL: process.env.FRONTEND_URL || "",
+  };
+
+  return model;
+}
+
+/* ------------------------------ Rendu & PDF -------------------------------- */
+export function renderReport(data: any): string {
+  const tpl = loadTemplate();
+  return tpl(data);
+}
+
+export async function generatePDFReport(data: any, _opts?: { landscape?: boolean }): Promise<Buffer> {
   const html = renderReport(data);
-  return htmlToPDF(html, _opts);
+  const pdf = await htmlToPDF(html, _opts);
+  return pdf;
 }

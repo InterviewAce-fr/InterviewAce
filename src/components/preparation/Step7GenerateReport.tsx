@@ -15,31 +15,6 @@ const ensureSessionToken = async (tokenFromCtx?: string) => {
   return session?.access_token;
 };
 
-/**
- * Fetch Top News for a company from the backend.
- * Returns an array of { title, url?, source?, date?, summary? }
- */
-const fetchTopNews = async (companyName: string, token?: string, n: number = 5) => {
-  if (!companyName) return [];
-  try {
-    const resp = await fetch(`${import.meta.env.VITE_API_BASE_URL}/ai/top-news`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ company_name: companyName, n }),
-    });
-    if (!resp.ok) return [];
-    const data = await resp.json();
-    // backend may return {articles:[...]} or an array directly
-    const arr = Array.isArray(data?.articles) ? data.articles : (Array.isArray(data) ? data : []);
-    return arr;
-  } catch {
-    return [];
-  }
-};
-
 const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }) => {
   const { session, profile } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -58,7 +33,6 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
     const safeTitle =
       derived ||
       (p?.title && p.title.trim()) ||
-      buildTitleFromStep1(p?.step_1_data) ||
       'Interview Preparation';
     const safeId = (typeof p?.id === 'string' && p.id.trim().length > 0) ? p.id : undefined;
     return {
@@ -79,21 +53,6 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
     setPreviewLoading(true);
     try {
       const token = await ensureSessionToken(session?.access_token);
-
-      // 1) Construire le payload
-      const prepPayload = buildPreparationPayload(preparation);
-
-      // 2) Récupérer et injecter les Top News si company_name dispo
-      const companyName = preparation?.step_1_data?.company_name || '';
-      const topNews = companyName ? await fetchTopNews(companyName, token, 5) : [];
-      if (Array.isArray(topNews) && topNews.length) {
-        prepPayload.step_3_data = {
-          ...(prepPayload.step_3_data || {}),
-          topNews, // le backend sait mapper topNews / top_news
-        };
-      }
-
-      // 3) Appeler le rendu HTML
       const resp = await fetch(`${import.meta.env.VITE_API_BASE_URL}/pdf/html`, {
         method: 'POST',
         headers: {
@@ -101,8 +60,9 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
           ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
-          preparationData: prepPayload,
+          preparationData: buildPreparationPayload(preparation),
           showGenerateButton: true,
+          isPremium: !!profile?.is_premium,
         }),
       });
       if (!resp.ok) throw new Error(await resp.text());
@@ -119,7 +79,7 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
   useEffect(() => {
     loadHtmlPreview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preparation?.id]);
+  }, [preparation?.id, profile?.is_premium]);
 
   useEffect(() => {
     const handler = (ev: MessageEvent) => {
@@ -147,20 +107,6 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
     setJobId(null);
 
     try {
-      // 1) Construire le payload
-      const prepPayload = buildPreparationPayload(preparation);
-
-      // 2) Récupérer et injecter les Top News (même logique que preview)
-      const companyName = preparation?.step_1_data?.company_name || '';
-      const topNews = companyName ? await fetchTopNews(companyName, token, 5) : [];
-      if (Array.isArray(topNews) && topNews.length) {
-        prepPayload.step_3_data = {
-          ...(prepPayload.step_3_data || {}),
-          topNews,
-        };
-      }
-
-      // 3) Génération PDF
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/pdf/generate`, {
         method: 'POST',
         headers: {
@@ -168,7 +114,7 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          preparationData: prepPayload
+          preparationData: buildPreparationPayload(preparation)
         }),
       });
 
@@ -181,18 +127,15 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
       }
 
       if (profile?.is_premium) {
-        // premium → job queue (JSON)
         const data = await response.json();
         setJobId(data.jobId);
         alert('PDF generation started. You will receive an email when ready.');
       } else {
-        // non premium → renvoi direct du PDF (blob)
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
-        const safeName = (preparation.title || 'Interview Report').replace(/[^a-zA-Z0-9]/g, '-');
         a.href = url;
-        a.download = `${safeName}.pdf`;
+        a.download = `${(preparation.title || 'report').replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -214,12 +157,9 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
         <h2 className="text-2xl font-bold text-gray-900">Report Preview</h2>
       </div>
 
-      {/* Action bar sticky – non imprimée */}
       <div className="sticky top-2 z-10 print:hidden mb-4">
         <div className="bg-white/70 backdrop-blur border rounded-xl p-3 flex items-center justify-between shadow-sm">
-          <div className="text-sm text-gray-600">
-            Vérifie le rendu avant de générer le PDF.
-          </div>
+          <div className="text-sm text-gray-600">Vérifie le rendu avant de générer le PDF.</div>
           <button
             onClick={handleGenerateReport}
             disabled={loading}
@@ -231,20 +171,14 @@ const Step7GenerateReport: React.FC<Step7GenerateReportProps> = ({ preparation }
         </div>
       </div>
 
-      {/* Preview */}
       <div className="rounded-xl border overflow-hidden shadow-sm bg-white">
         {previewLoading ? (
           <div className="p-10 text-center text-gray-500">Loading preview…</div>
         ) : (
-          <iframe
-            title="InterviewAce Report Preview"
-            srcDoc={html}
-            className="w-full h-[75vh] border-0"
-          />
+          <iframe title="InterviewAce Report Preview" srcDoc={html} className="w-full h-[75vh] border-0" />
         )}
       </div>
 
-      {/* Premium job info */}
       {profile?.is_premium && jobId && (
         <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-800">
           <Crown className="w-5 h-5 inline mr-2" />
