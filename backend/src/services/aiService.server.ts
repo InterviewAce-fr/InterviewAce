@@ -120,12 +120,21 @@ export async function generateSWOT(input: any): Promise<any> {
   };
 }
 
-export async function getTopNewsServer(company: string): Promise<any> {
+export async function getTopNewsServer(input: {
+  company_name: string;
+  company_summary?: string;
+  months?: number;
+  limit?: number;
+  callLLM?: (prompt: string, opts?: { json?: boolean }) => Promise<any>;
+}): Promise<any> {
   return {
     news: [
-      { title: 'Company launches new product', url: 'https://example.com/news' },
+      { title: `Top news for ${input.company_name}`, url: "https://example.com/news" },
     ],
-    company,
+    meta: {
+      months: input.months,
+      limit: input.limit,
+    },
   };
 }
 
