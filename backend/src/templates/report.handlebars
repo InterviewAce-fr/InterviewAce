@@ -2,211 +2,265 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <title>Interview Report — {{candidate.name}} × {{company.name}}</title>
+  <title>Interview Report — {{coalesce candidate.name "Candidate"}} x {{coalesce company.name "Company"}}</title>
   <style>
-    :root { --ink:#111; --muted:#666; --line:#e6e6e6; --bg:#fafafa; --brand:#0a66c2;}
-    * { box-sizing: border-box; }
-    body { font-family: Inter, -apple-system, Segoe UI, Arial, Helvetica, sans-serif; color:var(--ink); line-height:1.55; margin:0; }
-    .wrap { max-width: 860px; margin: 0 auto; padding: 24px; }
-    h1,h2,h3 { margin: 0.2em 0 0.5em; }
-    h1 { font-size: 28px; }
-    h2 { font-size: 22px; border-bottom: 2px solid var(--ink); padding-bottom: 6px; }
+    body { font-family: Arial, Helvetica, sans-serif; color:#111; line-height:1.45; }
+    h1,h2,h3 { margin: 0.2em 0 0.4em; }
+    h1 { font-size: 26px; }
+    h2 { font-size: 20px; border-bottom: 2px solid #222; padding-bottom: 4px; }
     h3 { font-size: 16px; margin-top: 14px; }
-    p { margin: 0.25em 0 0.75em; }
-    .muted { color: var(--muted); }
+    .muted { color:#666; }
+    .grid { display:grid; gap:10px; grid-template-columns: repeat(2, 1fr); }
+    .grid-3 { display:grid; gap:10px; grid-template-columns: repeat(3, 1fr); }
+    .grid-4 { display:grid; gap:10px; grid-template-columns: repeat(4, 1fr); }
+    .card { border:1px solid #e5e5e5; border-radius:8px; padding:10px; background:#fff; }
+    ul { margin: 0.2em 0 0.6em 0; padding-left: 1.1em; } /* indentation réduite */
+    table { width:100%; border-collapse:collapse; margin:6px 0 12px; }
+    th, td { border:1px solid #e5e5e5; padding:6px 8px; vertical-align:top; }
+    th { background:#fafafa; text-align:left; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#f2f2f2; font-size:12px; }
     .small { font-size: 12px; }
-    .card { border:1px solid var(--line); border-radius:10px; padding:12px; background:#fff; }
-    .grid-2 { display:grid; gap:12px; grid-template-columns: 1fr 1fr; }
-    .grid-4 { display:grid; gap:12px; grid-template-columns: repeat(4, minmax(0,1fr)); }
-    .section { page-break-inside: avoid; margin: 16px 0 18px; }
-    ul { margin: 0.25em 0 0.75em 1.15em; }
-    table { width:100%; border-collapse: collapse; margin: 8px 0 12px; }
-    th, td { border:1px solid var(--line); padding:8px 10px; vertical-align:top; }
-    th { background: var(--bg); text-align:left; font-weight: 600; }
-    .pill { display:inline-block; padding:3px 10px; border-radius:999px; background:var(--bg); border:1px solid var(--line); font-size:12px; }
-    .mb { margin-bottom: 12px; }
-    .mt { margin-top: 12px; }
     .right { text-align:right; }
-    a { color: var(--brand); text-decoration: none; }
-    .empty { color:#999; font-style: italic; }
+    .mt { margin-top: 12px; }
+    .mb { margin-bottom: 12px; }
+    .section { page-break-inside: avoid; margin-bottom: 14px; }
+    .two-col { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    a { color: #0a66c2; text-decoration: none; }
+    .swot ul { padding-left: 1em; } /* puces SWOT plus compactes */
   </style>
 </head>
 <body>
-  <div class="wrap">
 
-    <!-- Header -->
-    <div class="section">
-      <h1>Interview Report</h1>
-      <div class="muted small">
-        Candidat: <strong>{{candidate.name}}</strong> • Poste: <strong>{{role.title}}</strong> • Société: <strong>{{company.name}}</strong>
-        {{#if generatedAt}} • Généré le {{generatedAt}}{{/if}}
-      </div>
+  <!-- Header -->
+  <div class="section">
+    <h1>Interview Report</h1>
+    <div class="muted small">
+      Candidat: <strong>{{coalesce candidate.name "—"}}</strong> • Poste: <strong>{{coalesce role.title "—"}}</strong> • Société: <strong>{{coalesce company.name "—"}}</strong>
+      {{#if generatedAt}}• Généré le {{generatedAt}}{{/if}}
     </div>
+  </div>
 
-    <!-- Business Model -->
-    {{#if (or company.businessModel (or (notEmpty company.revenueStreams) (or (notEmpty company.pricing) (notEmpty company.keyCustomers))))}}
-    <div class="section">
-      <h2>Business model</h2>
+  <!-- Business Model (Canvas) -->
+  {{#if (or company.businessModel (or (notEmpty company.valueProps) (or (notEmpty company.keyPartners) (or (notEmpty company.keyActivities) (or (notEmpty company.keyResources) (or (notEmpty company.customerRelationships) (or (notEmpty company.channels) (or (notEmpty company.customerSegments) (or (notEmpty company.costStructure) (notEmpty company.revenueStreams))))))))))}}
+  <div class="section">
+    <h2>Business model</h2>
+
+    {{#if company.businessModel}}
       <div class="card">
-        {{#if company.businessModel}}<p>{{company.businessModel}}</p>{{/if}}
-        {{#if (notEmpty company.revenueStreams)}}
-          <h3>Revenue streams</h3>
-          <ul>{{#each company.revenueStreams}}<li>{{this}}</li>{{/each}}</ul>
-        {{/if}}
-        {{#if (notEmpty company.pricing)}}
-          <h3>Pricing</h3>
-          <ul>{{#each company.pricing}}<li>{{this}}</li>{{/each}}</ul>
-        {{/if}}
-        {{#if (notEmpty company.keyCustomers)}}
-          <h3>Key customers / segments</h3>
-          <ul>{{#each company.keyCustomers}}<li>{{this}}</li>{{/each}}</ul>
-        {{/if}}
+        <p>{{company.businessModel}}</p>
       </div>
-    </div>
     {{/if}}
 
-    <!-- Strategy + Top news -->
-    {{#if (or (or (notEmpty strategy.strengths) (notEmpty strategy.weaknesses)) (or (notEmpty strategy.opportunities) (or (notEmpty strategy.threats) (notEmpty company.topNews))))}}
-    <div class="section">
-      <h2>Strategy</h2>
+    <div class="grid-3 mt">
+      {{#if (notEmpty company.valueProps)}}
+      <div class="card">
+        <h3>Value propositions</h3>
+        <ul>{{#each company.valueProps}}<li>{{this}}</li>{{/each}}</ul>
+      </div>
+      {{/if}}
 
-      {{#if (or (notEmpty strategy.strengths) (or (notEmpty strategy.weaknesses) (or (notEmpty strategy.opportunities) (notEmpty strategy.threats))))}}
-      <div class="grid-4">
-        {{#if (notEmpty strategy.strengths)}}
-        <div class="card">
-          <h3>Strengths</h3>
+      {{#if (notEmpty company.customerSegments)}}
+      <div class="card">
+        <h3>Customer segments</h3>
+        <ul>{{#each company.customerSegments}}<li>{{this}}</li>{{/each}}</ul>
+      </div>
+      {{/if}}
+
+      {{#if (notEmpty company.channels)}}
+      <div class="card">
+        <h3>Channels</h3>
+        <ul>{{#each company.channels}}<li>{{this}}</li>{{/each}}</ul>
+      </div>
+      {{/if}}
+
+      {{#if (notEmpty company.keyActivities)}}
+      <div class="card">
+        <h3>Key activities</h3>
+        <ul>{{#each company.keyActivities}}<li>{{this}}</li>{{/each}}</ul>
+      </div>
+      {{/if}}
+
+      {{#if (notEmpty company.keyResources)}}
+      <div class="card">
+        <h3>Key resources</h3>
+        <ul>{{#each company.keyResources}}<li>{{this}}</li>{{/each}}</ul>
+      </div>
+      {{/if}}
+
+      {{#if (notEmpty company.keyPartners)}}
+      <div class="card">
+        <h3>Key partners</h3>
+        <ul>{{#each company.keyPartners}}<li>{{this}}</li>{{/each}}</ul>
+      </div>
+      {{/if}}
+
+      {{#if (notEmpty company.customerRelationships)}}
+      <div class="card">
+        <h3>Customer relationships</h3>
+        <ul>{{#each company.customerRelationships}}<li>{{this}}</li>{{/each}}</ul>
+      </div>
+      {{/if}}
+
+      {{#if (notEmpty company.costStructure)}}
+      <div class="card">
+        <h3>Cost structure</h3>
+        <ul>{{#each company.costStructure}}<li>{{this}}</li>{{/each}}</ul>
+      </div>
+      {{/if}}
+
+      {{#if (notEmpty company.revenueStreams)}}
+      <div class="card">
+        <h3>Revenue streams</h3>
+        <ul>{{#each company.revenueStreams}}<li>{{this}}</li>{{/each}}</ul>
+      </div>
+      {{/if}}
+    </div>
+  </div>
+  {{/if}}
+
+  <!-- Strategy (ex-SWOT) -->
+  {{#if strategy}}
+  <div class="section swot">
+    <h2>Strategy</h2>
+
+    <div class="grid-4">
+      <div class="card">
+        <h3>Strengths</h3>
+        {{#if strategy.strengths}}
           <ul>{{#each strategy.strengths}}<li>{{this}}</li>{{/each}}</ul>
-        </div>
-        {{/if}}
-        {{#if (notEmpty strategy.weaknesses)}}
-        <div class="card">
-          <h3>Weaknesses</h3>
-          <ul>{{#each strategy.weaknesses}}<li>{{this}}</li>{{/each}}</ul>
-        </div>
-        {{/if}}
-        {{#if (notEmpty strategy.opportunities)}}
-        <div class="card">
-          <h3>Opportunities</h3>
-          <ul>{{#each strategy.opportunities}}<li>{{this}}</li>{{/each}}</ul>
-        </div>
-        {{/if}}
-        {{#if (notEmpty strategy.threats)}}
-        <div class="card">
-          <h3>Threats</h3>
-          <ul>{{#each strategy.threats}}<li>{{this}}</li>{{/each}}</ul>
-        </div>
+        {{else}}
+          <div class="small muted">No strengths identified</div>
         {{/if}}
       </div>
-      {{/if}}
-
-      {{#if (notEmpty company.topNews)}}
-        <h3 class="mt">Top news</h3>
-        <table>
-          <thead>
-            <tr><th>Titre</th><th>Source</th><th class="right">Date</th></tr>
-          </thead>
-          <tbody>
-            {{#each company.topNews}}
-            <tr>
-              <td>
-                {{#if url}}<a href="{{url}}">{{title}}</a>{{else}}{{title}}{{/if}}
-                {{#if summary}}<div class="small muted">{{summary}}</div>{{/if}}
-              </td>
-              <td>{{#if source}}{{source}}{{else}}—{{/if}}</td>
-              <td class="right">{{#if date}}{{date}}{{else}}—{{/if}}</td>
-            </tr>
-            {{/each}}
-          </tbody>
-        </table>
-      {{/if}}
+      <div class="card">
+        <h3>Weaknesses</h3>
+        {{#if strategy.weaknesses}}
+          <ul>{{#each strategy.weaknesses}}<li>{{this}}</li>{{/each}}</ul>
+        {{else}}
+          <div class="small muted">No weaknesses identified</div>
+        {{/if}}
+      </div>
+      <div class="card">
+        <h3>Opportunities</h3>
+        {{#if strategy.opportunities}}
+          <ul>{{#each strategy.opportunities}}<li>{{this}}</li>{{/each}}</ul>
+        {{else}}
+          <div class="small muted">No opportunities identified</div>
+        {{/if}}
+      </div>
+      <div class="card">
+        <h3>Threats</h3>
+        {{#if strategy.threats}}
+          <ul>{{#each strategy.threats}}<li>{{this}}</li>{{/each}}</ul>
+        {{else}}
+          <div class="small muted">No threats identified</div>
+        {{/if}}
+      </div>
     </div>
-    {{/if}}
 
-    <!-- Profile & Experience Matching -->
-    {{#if (or profileMatch.matchScore (notEmpty profileMatch.items))}}
-    <div class="section">
-      <h2>Profile & Experience matching</h2>
-      {{#if profileMatch.matchScore}}
-        <div class="mb"><span class="pill">Overall score: {{profileMatch.matchScore}}%</span></div>
-      {{/if}}
-      {{#if profileMatch.summary}}<p class="muted">{{profileMatch.summary}}</p>{{/if}}
-
-      {{#if (notEmpty profileMatch.items)}}
+    {{#if company.topNews}}
+      <h3 class="mt">Top news</h3>
       <table>
         <thead>
-          <tr><th>Requirements</th><th>Experience</th><th class="right">Score</th></tr>
+          <tr><th>Title</th><th>Source</th><th class="right">Date</th></tr>
         </thead>
         <tbody>
-          {{#each profileMatch.items}}
-            <tr>
-              <td>{{requirement}}</td>
-              <td>{{evidence}}</td>
-              <td class="right">{{#if score}}{{score}}%{{else}}—{{/if}}</td>
-            </tr>
+          {{#each company.topNews}}
+          <tr>
+            <td>
+              {{#if url}}<a href="{{url}}">{{title}}</a>{{else}}{{title}}{{/if}}
+              {{#if summary}}<div class="small muted">{{summary}}</div>{{/if}}
+            </td>
+            <td>{{#if source}}{{source}}{{else}}—{{/if}}</td>
+            <td class="right">{{#if date}}{{date}}{{else}}—{{/if}}</td>
+          </tr>
           {{/each}}
         </tbody>
       </table>
-      {{else}}
-        <div class="empty">No matching items provided.</div>
-      {{/if}}
-    </div>
     {{/if}}
-
-    <!-- The Why -->
-    {{#if (or (notEmpty why.whyCompany) (or (notEmpty why.whyRole) (notEmpty why.whyYou)))}}
-    <div class="section">
-      <h2>The why</h2>
-      <div class="grid-2">
-        {{#if (notEmpty why.whyCompany)}}
-        <div class="card">
-          <h3>Why this company?</h3>
-          <ul>{{#each why.whyCompany}}<li>{{this}}</li>{{/each}}</ul>
-        </div>
-        {{/if}}
-        {{#if (notEmpty why.whyRole)}}
-        <div class="card">
-          <h3>Why this role?</h3>
-          <ul>{{#each why.whyRole}}<li>{{this}}</li>{{/each}}</ul>
-        </div>
-        {{/if}}
-      </div>
-      {{#if (notEmpty why.whyYou)}}
-      <div class="card mt">
-        <h3>Why you / why now?</h3>
-        <ul>{{#each why.whyYou}}<li>{{this}}</li>{{/each}}</ul>
-      </div>
-      {{/if}}
-    </div>
-    {{/if}}
-
-    <!-- Interview Q&A -->
-    {{#if (or (notEmpty interview.questionsForCandidate) (notEmpty interview.questionsForCompany))}}
-    <div class="section">
-      <h2>Interview questions & answers</h2>
-
-      {{#if (notEmpty interview.questionsForCandidate)}}
-        <h3>Company → Candidate</h3>
-        {{#each interview.questionsForCandidate}}
-          <div class="card mb">
-            <div><strong>Q.</strong> {{question}}</div>
-            {{#if answer}}<div class="mt"><strong>A.</strong> {{answer}}</div>{{/if}}
-            {{#if note}}<div class="small muted mt">{{note}}</div>{{/if}}
-          </div>
-        {{/each}}
-      {{/if}}
-
-      {{#if (notEmpty interview.questionsForCompany)}}
-        <h3 class="mt">Candidate → Company</h3>
-        {{#each interview.questionsForCompany}}
-          <div class="card mb">
-            <div><strong>Q.</strong> {{question}}</div>
-            {{#if note}}<div class="small muted mt">{{note}}</div>{{/if}}
-          </div>
-        {{/each}}
-      {{/if}}
-    </div>
-    {{/if}}
-
   </div>
+  {{/if}}
+
+  <!-- Profile & Experience Matching -->
+  {{#if profileMatch}}
+  <div class="section">
+    <h2>Profile & Experience matching</h2>
+    {{#if profileMatch.matchScore}}
+      <div class="mb"><span class="pill">Overall score: {{profileMatch.matchScore}}%</span></div>
+    {{/if}}
+    {{#if profileMatch.summary}}<p class="muted">{{profileMatch.summary}}</p>{{/if}}
+
+    <table>
+      <thead>
+        <tr><th>Requirements</th><th>Experience</th><th class="right">Score</th></tr>
+      </thead>
+      <tbody>
+        {{#each profileMatch.items}}
+          <tr>
+            <td>{{requirement}}</td>
+            <td>{{evidence}}</td>
+            <td class="right">{{#if score}}{{score}}%{{else}}—{{/if}}</td>
+          </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+  {{/if}}
+
+  <!-- The Why -->
+  {{#if why}}
+  <div class="section">
+    <h2>The why</h2>
+    <div class="two-col">
+      <div class="card">
+        <h3>Why this company?</h3>
+        {{#if why.whyCompany}}
+          <ul>{{#each why.whyCompany}}<li>{{this}}</li>{{/each}}</ul>
+        {{else}}<div class="small muted">—</div>{{/if}}
+      </div>
+      <div class="card">
+        <h3>Why this role?</h3>
+        {{#if why.whyRole}}
+          <ul>{{#each why.whyRole}}<li>{{this}}</li>{{/each}}</ul>
+        {{else}}<div class="small muted">—</div>{{/if}}
+      </div>
+    </div>
+    <div class="card mt">
+      <h3>Why you / why now?</h3>
+      {{#if why.whyYou}}
+        <ul>{{#each why.whyYou}}<li>{{this}}</li>{{/each}}</ul>
+      {{else}}<div class="small muted">—</div>{{/if}}
+    </div>
+  </div>
+  {{/if}}
+
+  <!-- Interview Q&A -->
+  {{#if interview}}
+  <div class="section">
+    <h2>Interview questions & answers</h2>
+
+    {{#if interview.questionsForCandidate}}
+      <h3>Company → Candidate</h3>
+      {{#each interview.questionsForCandidate}}
+        <div class="card mb">
+          <div><strong>Q.</strong> {{question}}</div>
+          {{#if answer}}<div class="mt"><strong>A.</strong> {{answer}}</div>{{/if}}
+          {{#if note}}<div class="small muted mt">{{note}}</div>{{/if}}
+        </div>
+      {{/each}}
+    {{/if}}
+
+    {{#if interview.questionsForCompany}}
+      <h3 class="mt">Candidate → Company</h3>
+      {{#each interview.questionsForCompany}}
+        <div class="card mb">
+          <div><strong>Q.</strong> {{question}}</div>
+          {{#if note}}<div class="small muted mt">{{note}}</div>{{/if}}
+        </div>
+      {{/each}}
+    {{/if}}
+  </div>
+  {{/if}}
+
 </body>
 </html>
