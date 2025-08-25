@@ -124,16 +124,27 @@ export function prepareModel(input: any, opts?: { showGenerateButton?: boolean; 
   const s6 = prep.step_6_data || {};
 
   // --- Company Intelligence -------------------------------------------------
-  // Timeline: généralement un string[] (ex: "2024-03: Lancement X")
+  // Timeline: string[] ou [{date,event}] → rendu compact "date — event"
   const timelineRaw =
     (Array.isArray(s2?.timeline) && s2.timeline) ||
     (Array.isArray(s3?.timeline) && s3.timeline) ||
+    (Array.isArray(s2?.companyTimeline) && s2.companyTimeline) ||
+    (Array.isArray(s3?.companyTimeline) && s3.companyTimeline) ||
+    (Array.isArray(s2?.timeline_items) && s2.timeline_items) ||
     [];
-  const timeline = timelineRaw
-    .map((x: any) => (typeof x === "string" ? x.trim() : ""))
+  const timeline: string[] = timelineRaw
+    .map((x: any) => {
+      if (typeof x === "string") return x.trim();
+      if (x && typeof x === "object") {
+        const d = (x.date || x.when || "").toString().trim();
+        const e = (x.event || x.title || x.text || "").toString().trim();
+        return [d, e].filter(Boolean).join(" — ");
+      }
+      return "";
+    })
     .filter(Boolean);
 
-  // Competitors: objets { name, url?, country?, relative_size?, differentiators?[], segment? }
+  // Competitors
   const competitorsRaw =
     (Array.isArray(s2?.competitors) && s2.competitors) ||
     (Array.isArray(s3?.competitors) && s3.competitors) ||
@@ -157,24 +168,30 @@ export function prepareModel(input: any, opts?: { showGenerateButton?: boolean; 
   const resps: string[] =
     s1.key_responsibilities || s1.keyResponsibilities || s1.responsibilities || [];
 
+  // Évidences (compat deux conventions)
+  const reqEvidences = s4?.requirementResponses || s4?.requirement_responses || [];
+  const respEvidences = s4?.responsibilityResponses || s4?.responsibility_responses || [];
+
+  // Meilleures correspondances avec score (compat deux conventions)
+  const matchesArr: any[] = Array.isArray(s4?.matchingResults?.matches)
+    ? s4.matchingResults.matches
+    : (Array.isArray(s4?.matches) ? s4.matches : []);
+
   const bestScoreFor = (type: "requirement" | "responsibility", idx: number) => {
-    const matches: any[] = Array.isArray(s4?.matchingResults?.matches)
-      ? s4.matchingResults.matches
-      : [];
-    const m = matches
+    const m = matchesArr
       .filter((x) => x?.targetType === type && Number(x?.targetIndex) === idx)
       .sort((a, b) => (b?.score ?? 0) - (a?.score ?? 0))[0];
-    return m?.score ?? null;
+    return typeof m?.score === "number" ? Math.max(0, Math.min(100, Math.round(m.score))) : null;
   };
 
   const reqItems = (reqs as string[]).map((r, i) => ({
     requirement: r,
-    evidence: s4?.requirementResponses?.[i] || "",
+    evidence: reqEvidences?.[i] || "",
     score: bestScoreFor("requirement", i),
   }));
   const respItems = (resps as string[]).map((r, i) => ({
     requirement: r,
-    evidence: s4?.responsibilityResponses?.[i] || "",
+    evidence: respEvidences?.[i] || "",
     score: bestScoreFor("responsibility", i),
   }));
 
@@ -192,12 +209,26 @@ export function prepareModel(input: any, opts?: { showGenerateButton?: boolean; 
     revenueStreams: asArray(s2.revenueStreams),
   };
 
-  // Top news (si déjà fourni par le front – sinon la route /pdf ira fetch)
-  const topNews =
+  // Top news (formats tolérés ; la route /pdf peut aussi faire un fetch de secours)
+  const topNewsRaw =
     (Array.isArray(s3?.topNews) && s3.topNews) ||
     (Array.isArray(s3?.top_news) && s3.top_news) ||
     (Array.isArray(s3?.news) && s3.news) ||
+    (Array.isArray(s2?.topNews) && s2.topNews) ||
+    (Array.isArray(s2?.news) && s2.news) ||
+    (Array.isArray(s3?.items) && s3.items) ||
+    (Array.isArray(s2?.items) && s2.items) ||
     [];
+  const topNews = topNewsRaw
+    .map((n: any) => ({
+      title: n?.title || n?.headline || "",
+      url: n?.url || n?.link || "",
+      source: n?.source || n?.publisher || "",
+      date: n?.date || n?.publishedAt || "",
+      summary: n?.summary || n?.description || "",
+      category: n?.category || "",
+    }))
+    .filter((n: any) => n.title);
 
   const model = {
     generatedAt: new Date().toISOString(),
@@ -229,10 +260,12 @@ export function prepareModel(input: any, opts?: { showGenerateButton?: boolean; 
     },
 
     profileMatch: (s4?.matchingResults || reqItems.length || respItems.length) && {
-      matchScore:
-        typeof s4?.matchingResults?.overallScore === "number"
-          ? Math.round(s4.matchingResults.overallScore)
-          : null,
+      matchScore: (() => {
+        const v = (typeof s4?.matchingResults?.overallScore === "number"
+          ? s4.matchingResults.overallScore
+          : (typeof s4?.overallScore === "number" ? s4.overallScore : null));
+        return (typeof v === "number") ? Math.max(0, Math.min(100, Math.round(v))) : null;
+      })(),
       items: [...reqItems, ...respItems].filter(
         (x) => x.requirement || x.evidence || typeof x.score === "number"
       ),
@@ -244,9 +277,14 @@ export function prepareModel(input: any, opts?: { showGenerateButton?: boolean; 
       whyYou: asArray(s5?.whyYou),
     },
 
-    interview: (s6 && Object.keys(s6).length) && {
-      // Company → Candidate : fusionne toutes les catégories de Q/R
-      questionsForCandidate: (
+    interview: (s6 && Object.keys(s6).length) && (function normalizeInterview(){
+      const toQ = (q: any) => ({
+        question: q?.question || q?.q || "",
+        answer: q?.answer || q?.a || "",
+        note: q?.note || q?.reason || "",
+      });
+      // Company → Candidate
+      const qc = (
         ([] as any[]).concat(
           s6.behavioral_questions || [],
           s6.technical_questions || [],
@@ -254,15 +292,17 @@ export function prepareModel(input: any, opts?: { showGenerateButton?: boolean; 
           s6.company_questions || [],
           s6.career_questions || [],
           s6.personal_questions || [],
-          s6.qa_candidate || [] // compat éventuelle
+          s6.qa_candidate || [],
+          s6.all_questions || []
         ) || []
-      ).filter((q) => q && (q.question || q.answer || q.note)),
+      ).map(toQ).filter((q) => q.question || q.answer || q.note);
       // Candidate → Company
-      questionsForCompany: (s6.questions_to_ask || s6.qa_company || []).map((q: any) => ({
-        question: q?.question || "",
+      const qco = (s6.questions_to_ask || s6.qa_company || []).map((q: any) => ({
+        question: q?.question || q?.q || "",
         note: q?.reason || q?.note || "",
-      })),
-    },
+      }));
+      return { questionsForCandidate: qc, questionsForCompany: qco };
+    })(),
   };
 
   return model;

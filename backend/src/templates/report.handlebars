@@ -82,6 +82,71 @@
       </div>
     </div>
 
+    <!-- Company Intelligence (AVANT Business model) -->
+    {{#if (or (notEmpty company.timeline) (or (notEmpty company.topNews) (notEmpty company.competitors)))}}
+    <div class="section">
+      <h2>📊 Company intelligence</h2>
+
+      {{#if (notEmpty company.timeline)}}
+      <div class="card" style="margin-bottom:10px">
+        <h3>Timeline</h3>
+        <ul>
+          {{#each company.timeline}}<li>{{this}}</li>{{/each}}
+        </ul>
+      </div>
+      {{/if}}
+
+      {{#if (notEmpty company.topNews)}}
+      <div class="card" style="margin-bottom:10px">
+        <h3>📰 Top news (last 18 months)</h3>
+        <div class="news news-3 grid">
+          {{#each company.topNews}}
+          <article class="item">
+            <div class="bar"></div>
+            {{#if category}}<span class="tag">{{category}}</span>{{/if}}
+            <h4>{{#if url}}<a href="{{url}}">{{title}}</a>{{else}}{{title}}{{/if}}</h4>
+            {{#if summary}}<div class="small" style="margin-top:4px">{{summary}}</div>{{/if}}
+            <div class="meta" style="margin-top:6px">
+              {{#if source}}{{source}}{{else}}—{{/if}} · {{#if date}}{{date}}{{else}}—{{/if}}
+            </div>
+          </article>
+          {{/each}}
+        </div>
+      </div>
+      {{/if}}
+
+      {{#if (notEmpty company.competitors)}}
+      <div class="card" style="margin-bottom:10px">
+        <h3>Competitors</h3>
+        <table class="table">
+          <thead>
+            <tr><th>Name</th><th>Segment</th><th>Country</th><th>Size</th><th>Diff.</th><th>Link</th></tr>
+          </thead>
+          <tbody>
+          {{#each company.competitors}}
+            <tr>
+              <td>{{name}}</td>
+              <td>{{segment}}</td>
+              <td>{{country}}</td>
+              <td>{{relative_size}}</td>
+              <td>
+                {{#if (notEmpty differentiators)}}
+                  <ul style="margin:0;padding-left:1.1em">
+                    {{#each differentiators}}<li>{{this}}</li>{{/each}}
+                  </ul>
+                {{else}}—
+                {{/if}}
+              </td>
+              <td>{{#if url}}<a href="{{url}}">{{url}}</a>{{else}}—{{/if}}</td>
+            </tr>
+          {{/each}}
+          </tbody>
+        </table>
+      </div>
+      {{/if}}
+    </div>
+    {{/if}}
+
     <!-- Business Model (Canvas) -->
     {{#if (or company.businessModel (or (notEmpty company.valueProps) (or (notEmpty company.keyPartners) (or (notEmpty company.keyActivities) (or (notEmpty company.keyResources) (or (notEmpty company.customerRelationships) (or (notEmpty company.channels) (or (notEmpty company.customerSegments) (or (notEmpty company.costStructure) (notEmpty company.revenueStreams))))))))))}}
     <div class="section">
@@ -153,77 +218,6 @@
     </div>
     {{/if}}
 
-    <!-- Company Intelligence -->
-    {{#if (or (notEmpty company.timeline) (or (notEmpty company.competitors) (notEmpty company.topNews)))}}
-    <div class="section">
-      <h2>📊 Company intelligence</h2>
-
-      {{#if (notEmpty company.timeline)}}
-      <div class="card" style="margin-bottom:10px">
-        <h3>Timeline</h3>
-        <ul>
-          {{#each company.timeline}}
-            <li>{{this}}</li>
-          {{/each}}
-        </ul>
-      </div>
-      {{/if}}
-
-      {{#if (notEmpty company.competitors)}}
-      <div class="card" style="margin-bottom:10px">
-        <h3>Competitors</h3>
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Name</th><th>Segment</th><th>Country</th><th>Size</th><th>Diff.</th><th>Link</th>
-            </tr>
-          </thead>
-          <tbody>
-          {{#each company.competitors}}
-            <tr>
-              <td>{{name}}</td>
-              <td>{{segment}}</td>
-              <td>{{country}}</td>
-              <td>{{relative_size}}</td>
-              <td>
-                {{#if (notEmpty differentiators)}}
-                  <ul style="margin:0;padding-left:1.1em">
-                    {{#each differentiators}}<li>{{this}}</li>{{/each}}
-                  </ul>
-                {{else}}—
-                {{/if}}
-              </td>
-              <td>{{#if url}}<a href="{{url}}">{{url}}</a>{{else}}—{{/if}}</td>
-            </tr>
-          {{/each}}
-          </tbody>
-        </table>
-      </div>
-      {{/if}}
-
-      {{#if (notEmpty company.topNews)}}
-      <div class="section">
-        <h3>📰 Top news (last 18 months)</h3>
-        <div class="news news-3 grid">
-          {{#each company.topNews}}
-          <article class="item">
-            <div class="bar"></div>
-            {{#if category}}<span class="tag">{{category}}</span>{{/if}}
-            <h4>
-              {{#if url}}<a href="{{url}}">{{title}}</a>{{else}}{{title}}{{/if}}
-            </h4>
-            {{#if summary}}<div class="small" style="margin-top:4px">{{summary}}</div>{{/if}}
-            <div class="meta" style="margin-top:6px">
-              {{#if source}}{{source}}{{else}}—{{/if}} · {{#if date}}{{date}}{{else}}—{{/if}}
-            </div>
-          </article>
-          {{/each}}
-        </div>
-      </div>
-      {{/if}}
-    </div>
-    {{/if}}
-
     <!-- Strategy (ex-SWOT) -->
     {{#if strategy}}
     <div class="section">
@@ -262,7 +256,7 @@
     <div class="section">
       <h2>👤 Profile & experience matching</h2>
 
-      {{#if profileMatch.matchScore}}
+      {{#if (not (eq profileMatch.matchScore null))}}
         <div class="kpi {{#if (and (not (eq profileMatch.matchScore null)) (or (and (not (eq profileMatch.matchScore null)) (gte profileMatch.matchScore 75)) (eq profileMatch.matchScore 100)))}}green{{else}}{{#if (and (not (eq profileMatch.matchScore null)) (gte profileMatch.matchScore 50))}}amber{{else}}red{{/if}}{{/if}}">
           <span class="dot"></span>
           <span class="pill">Overall score: {{profileMatch.matchScore}}%</span>
@@ -279,7 +273,7 @@
               <tr>
                 <td>{{requirement}}</td>
                 <td>{{evidence}}</td>
-                <td class="right">{{#if score}}{{score}}%{{else}}—{{/if}}</td>
+                <td class="right">{{#if (or (eq score 0) (gt score 0))}}{{score}}%{{else}}—{{/if}}</td>
               </tr>
             {{/each}}
           </tbody>
