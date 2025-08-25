@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 
 export interface JobAnalysisResult {
   company_name: string;
+  company_summary: string;
   job_title: string;
   responsibilities: string[];
   required_profile: string[];
@@ -103,6 +104,7 @@ class AIService {
     if (!r.ok) throw new Error(d?.error || 'Failed to analyze job text');
     return {
       company_name: d.company_name || 'Unknown Company',
+      company_summary: d.company_summary || '',
       job_title: d.job_title || 'Unknown Position',
       responsibilities: Array.isArray(d.responsibilities) ? d.responsibilities : [],
       required_profile: Array.isArray(d.required_profile) ? d.required_profile : [],
@@ -322,6 +324,34 @@ class AIService {
     const data = await r.json() as TopNewsItem[];
     console.debug('[TopNews] OK', data);
     return data;
+  }
+
+  async getCompanyTimeline(params: { company_name?: string; company_summary?: string; limit?: number }): Promise<string[]> {
+    const headers = await authHeaders();
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 20_000);
+
+    let r: Response;
+    try {
+      r = await fetch(api(`/ai/company-timeline`), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          company_name: params.company_name,
+          company_summary: params.company_summary,
+          limit: params.limit ?? 8,
+        }),
+        signal: ctrl.signal,
+      });
+    } finally { clearTimeout(t); }
+
+    if (!r.ok) {
+      try { const j = await r.clone().json(); throw new Error(j?.error || 'timeline failed'); }
+      catch { throw new Error(await r.text()); }
+    }
+
+    const d = await r.json() as { items: string[] };
+    return Array.isArray(d.items) ? d.items : [];
   }
 }
 

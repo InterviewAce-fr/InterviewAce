@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { toast } from '../components/ui/Toast';
 import Step1JobAnalysis from '../components/preparation/Step1JobAnalysis';
 import Step2BusinessModel from '../components/preparation/Step2BusinessModel';
+import Step2CompanyIntel from '@/components/preparation/Step2CompanyIntel';
 import Step3SWOT from '../components/preparation/Step3SWOT';
 import Step4Profile from '../components/preparation/Step4Profile';
 import Step5WhyQuestions from '../components/preparation/Step5WhyQuestions';
@@ -23,6 +24,8 @@ interface Preparation {
   step_4_data: any;
   step_5_data: any;
   step_6_data: any;
+  step_7_data: any;
+  step_8_data?: any;  // Optional: report step usually doesn't persist
   created_at: string;
   updated_at: string;
 }
@@ -42,14 +45,15 @@ const PreparationJourney: React.FC = () => {
   const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastEditedRef = React.useRef<{ step: number; data: any } | null>(null);
 
-  const steps = [
+  const steps: { number: number; title: string; component: React.ComponentType<any> }[] = [
     { number: 1, title: 'Job Analysis', component: Step1JobAnalysis },
-    { number: 2, title: 'Business Model', component: Step2BusinessModel },
-    { number: 3, title: 'Company Strategy', component: Step3SWOT },
-    { number: 4, title: 'Matching Requirements', component: Step4Profile },
-    { number: 5, title: 'Why Questions', component: Step5WhyQuestions },
-    { number: 6, title: 'Interview Questions', component: Step6Questions },
-    { number: 7, title: 'Generate Report', component: Step7GenerateReport },
+    { number: 2, title: 'Company Intelligence', component: Step2CompanyIntel },
+    { number: 3, title: 'Business Model', component: Step2BusinessModel },
+    { number: 4, title: 'Company Strategy', component: Step3SWOT },
+    { number: 5, title: 'Matching Requirements', component: Step4Profile },
+    { number: 6, title: 'Why Questions', component: Step5WhyQuestions },
+    { number: 7, title: 'Interview Questions', component: Step6Questions },
+    { number: 8, title: 'Generate Report', component: Step7GenerateReport },
   ];
 
   useEffect(() => {
@@ -68,6 +72,8 @@ const PreparationJourney: React.FC = () => {
         step_4_data: {},
         step_5_data: {},
         step_6_data: {},
+        step_7_data: {},
+        step_8_data: {},
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
@@ -198,6 +204,8 @@ const PreparationJourney: React.FC = () => {
         step_4_data: preparation.step_4_data ?? {},
         step_5_data: preparation.step_5_data ?? {},
         step_6_data: preparation.step_6_data ?? {},
+        step_7_data: preparation.step_7_data ?? {},
+        step_8_data: preparation.step_8_data ?? {},
       };
 
       const { data, error } = await supabase
@@ -341,7 +349,7 @@ const PreparationJourney: React.FC = () => {
     );
   }
 
-  const CurrentStepComponent = steps[currentStep - 1].component;
+  const CurrentStepComponent = steps[currentStep - 1].component as React.ComponentType<any>;
   const currentStepData = (preparation as any)[`step_${currentStep}_data`] || {};
 
   const buildTitleFromStep1 = (step1: any) => {
@@ -428,7 +436,7 @@ const PreparationJourney: React.FC = () => {
       {/* Step Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white rounded-lg shadow-sm p-6">
-          {currentStep === 7 ? (
+          {currentStep === 8 ? (
             <Step7GenerateReport
               data={currentStepData}
               onUpdate={(data: any) => updateStepData(currentStep, data)}

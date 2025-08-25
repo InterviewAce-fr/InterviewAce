@@ -4,6 +4,15 @@ import { aiService } from '@/lib/aiService';
 import { TwoColumnList } from '@/components/common';
 import { useArrayField } from '@/components/hooks';
 
+// Heuristique minimaliste si le backend ne renvoie pas company_summary
+function extractCompanySummaryFallback(text: string): string {
+ if (!text) return '';
+ // On prend les ~6 premières lignes, puis les 2–3 premières phrases, max 400 chars
+ const firstLines = text.split(/\n+/).slice(0, 6).join(' ');
+ const sentences = firstLines.split(/(?<=[.!?])\s+/).slice(0, 3);
+ return sentences.join(' ').trim().slice(0, 400);
+}
+
 interface Step1Props {
   data: {
     company_name?: string;
@@ -48,6 +57,7 @@ export default function Step1JobAnalysis({ data, onUpdate }: Step1Props) {
       onUpdate({
         ...data,
         company_name: analysisResult.company_name || '',
+        company_summary: analysisResult.company_summary || extractCompanySummaryFallback(jobText) || '',
         job_title: analysisResult.job_title || '',
         keyRequirements: analysisResult.required_profile || [],
         keyResponsibilities: analysisResult.responsibilities || [],

@@ -42,7 +42,7 @@ export async function analyzeCVFromText(cvText: string) {
 /* ------------------------------------------------------------------ */
 export async function analyzeJobFromText(jobText: string) {
   const systemPrompt = `Return strict JSON (response_format enforce):
-{"company_name":"","job_title":"","required_profile":[],"responsibilities":[]}`;
+{"company_name":"","company_summary":"","job_title":"","required_profile":[],"responsibilities":[]}`;
   const resp = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [
@@ -57,6 +57,7 @@ export async function analyzeJobFromText(jobText: string) {
   const parsed = JSON.parse(resp.choices?.[0]?.message?.content ?? '{}');
   return {
     company_name: parsed.company_name ?? '',
+    company_summary: String(parsed.company_summary ?? ''),
     job_title: parsed.job_title ?? '',
     required_profile: Array.isArray(parsed.required_profile) ? parsed.required_profile : [],
     responsibilities: Array.isArray(parsed.responsibilities) ? parsed.responsibilities : []
@@ -689,4 +690,52 @@ ${toolInput}
   return parsed.data.items
     .slice(0, limit)
     .sort((a, b) => (new Date(b.date || 0).getTime() || 0) - (new Date(a.date || 0).getTime() || 0));
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Step 2 — Company Timeline                                          */
+/* ------------------------------------------------------------------ */
+/**
+ * Génère une frise compacte (6–10 jalons) et renvoie un tableau de strings:
+ * ["YYYY – évènement", ...]
+ */
+export async function generateCompanyTimeline(payload: {
+  company_name?: string;
+  company_summary?: string;
+  limit?: number;
+}): Promise<string[]> {
+  const { company_name, company_summary, limit = 10 } = payload || {};
+
+  const systemPrompt = `Return STRICT JSON with exactly:
+{"items":["YYYY – label"]}
+
+Rules:
+- 6–10 bullets, French.
+- Each string MUST start with YYYY (or YYYY-MM), then " – ", then a short label.
+- Focus on founding, funding, launches, acquisitions/M&A, pivots, IPO, partnerships, leadership changes.
+- Use company_name / company_summary if provided.
+- No markdown or extra text.`;
+
+  const userContent = {
+    company_name: company_name ?? null,
+    company_summary: company_summary ?? null,
+    max: Math.max(6, Math.min(10, limit))
+  };
+
+  const resp = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    temperature: 0.2,
+    max_tokens: 700,
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: JSON.stringify(userContent) }
+    ]
+  });
+
+  let parsed: any = {};
+  try { parsed = JSON.parse(resp.choices?.[0]?.message?.content ?? '{}'); } catch { parsed = {}; }
+  const items = Array.isArray(parsed.items) ? parsed.items : [];
+  return items.map((s: any) => String(s || '').trim()).filter(Boolean).slice(0, userContent.max);
 }
