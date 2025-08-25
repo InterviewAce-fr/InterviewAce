@@ -123,6 +123,34 @@ export function prepareModel(input: any, opts?: { showGenerateButton?: boolean; 
   const s5 = prep.step_5_data || {};
   const s6 = prep.step_6_data || {};
 
+  // --- Company Intelligence -------------------------------------------------
+  // Timeline: généralement un string[] (ex: "2024-03: Lancement X")
+  const timelineRaw =
+    (Array.isArray(s2?.timeline) && s2.timeline) ||
+    (Array.isArray(s3?.timeline) && s3.timeline) ||
+    [];
+  const timeline = timelineRaw
+    .map((x: any) => (typeof x === "string" ? x.trim() : ""))
+    .filter(Boolean);
+
+  // Competitors: objets { name, url?, country?, relative_size?, differentiators?[], segment? }
+  const competitorsRaw =
+    (Array.isArray(s2?.competitors) && s2.competitors) ||
+    (Array.isArray(s3?.competitors) && s3.competitors) ||
+    [];
+  const competitors = competitorsRaw
+    .map((c: any) => ({
+      name: String(c?.name ?? "").trim(),
+      url: c?.url ? String(c.url) : "",
+      country: c?.country ? String(c.country) : "",
+      relative_size: c?.relative_size ? String(c.relative_size) : "",
+      segment: c?.segment ? String(c.segment) : "",
+      differentiators: Array.isArray(c?.differentiators)
+        ? c.differentiators.filter(Boolean).map((d: any) => String(d))
+        : [],
+    }))
+    .filter((c: any) => c.name);
+
   // Profile matching → table items
   const reqs: string[] =
     s1.key_requirements || s1.keyRequirements || s1.required_profile || [];
@@ -188,6 +216,8 @@ export function prepareModel(input: any, opts?: { showGenerateButton?: boolean; 
       name: s1?.company_name || "",
       website: s1?.company_website || "",
       ...companyBM,
+      timeline,
+      competitors,
       topNews,
     },
 
@@ -216,18 +246,19 @@ export function prepareModel(input: any, opts?: { showGenerateButton?: boolean; 
 
     interview: (s6 && Object.keys(s6).length) && {
       // Company → Candidate : fusionne toutes les catégories de Q/R
-      questionsForCandidate: ([] as any[])
-        .concat(
+      questionsForCandidate: (
+        ([] as any[]).concat(
           s6.behavioral_questions || [],
           s6.technical_questions || [],
           s6.situational_questions || [],
           s6.company_questions || [],
           s6.career_questions || [],
-          s6.personal_questions || []
-        )
-        .filter((q) => q && (q.question || q.answer || q.note)),
+          s6.personal_questions || [],
+          s6.qa_candidate || [] // compat éventuelle
+        ) || []
+      ).filter((q) => q && (q.question || q.answer || q.note)),
       // Candidate → Company
-      questionsForCompany: (s6.questions_to_ask || []).map((q: any) => ({
+      questionsForCompany: (s6.questions_to_ask || s6.qa_company || []).map((q: any) => ({
         question: q?.question || "",
         note: q?.reason || q?.note || "",
       })),
