@@ -1,7 +1,7 @@
 // src/components/preparation/Step2CompanyIntel.tsx
 import React, { useState } from 'react';
 import { aiService, TopNewsItem } from '@/lib/aiService';
-import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 interface Step2CompanyIntelProps {
   data: {
@@ -110,80 +110,83 @@ export default function Step2CompanyIntel({ data, onUpdate, jobData, companyName
 }
 
 function ArrowTimeline({ items }: { items: string[] }) {
- // items attendus : ["YYYY – évènement", ...]
- const containerRef = React.useRef<HTMLDivElement>(null);
+  // Parse "YYYY – évènement"
+  const milestones = (items || []).map((raw, idx) => {
+    const s = String(raw || '').trim();
+    const m = s.match(/^(\d{4}(?:[-/]\d{2})?)\s*[–-]\s*(.+)$/);
+    const date = m ? m[1] : s.slice(0, 7);
+    const label = m ? m[2] : s;
+    return { id: `${idx}-${date}`, date, label };
+  });
 
- const milestones = (items || []).map((raw, idx) => {
-   const s = String(raw || '').trim();
-   // Parse "YYYY – label" or "YYYY-MM – label"
-   const m = s.match(/^(\d{4}(?:[-/]\d{2})?)\s*[–-]\s*(.+)$/);
-   const date = m ? m[1] : s.slice(0, 7);
-   const label = m ? m[2] : s;
-   return { id: `${idx}-${date}`, date, label };
- });
+  if (milestones.length === 0) return null;
 
- const scroll = (dir: number) => {
-   const el = containerRef.current;
-   if (!el) return;
-   const amt = Math.min(600, el.clientWidth * 0.9);
-   el.scrollBy({ left: amt * dir, behavior: 'smooth' });
- };
+  // Nombre max d'éléments par ligne (responsive-friendly pour A4/écran)
+  const maxPerRow =
+    milestones.length <= 5 ? milestones.length : milestones.length <= 10 ? 5 : 6;
 
- return (
-   <div className="relative">
-     {/* Controls */}
-     <div className="mb-3 flex justify-end gap-2">
-       <button
-         type="button"
-         onClick={() => scroll(-1)}
-         className="inline-flex items-center rounded-lg border px-2 py-1 text-sm text-gray-700 hover:bg-gray-50"
-         aria-label="Scroll left"
-       >
-         <ChevronLeft className="h-4 w-4" />
-       </button>
-       <button
-         type="button"
-         onClick={() => scroll(1)}
-         className="inline-flex items-center rounded-lg border px-2 py-1 text-sm text-gray-700 hover:bg-gray-50"
-         aria-label="Scroll right"
-       >
-         <ChevronRight className="h-4 w-4" />
-       </button>
-     </div>
-     
-     {/* Track + Arrow head */}
-     <div
-       ref={containerRef}
-       className="relative overflow-x-auto snap-x snap-mandatory pb-8"
-     >
-       <div className="relative flex items-start gap-10 min-w-max pr-14">
-         {/* gradient track */}
-         <div className="pointer-events-none absolute left-0 right-8 top-7 h-2 rounded-full bg-gradient-to-r from-indigo-500 via-sky-500 to-fuchsia-500" />
-         {/* arrow head */}
-         <div className="pointer-events-none absolute right-0 top-[18px] w-0 h-0 border-t-[12px] border-b-[12px] border-l-[16px] border-t-transparent border-b-transparent border-l-fuchsia-500" />
-         {milestones.map((m, i) => (
-           <div key={m.id} className="snap-start min-w-[280px]">
-             <div className="relative pt-10">
-               {/* dot on the track */}
-               <div className="absolute left-1/2 top-[18px] -translate-x-1/2">
-                 <div className="h-3 w-3 rounded-full bg-white ring-4 ring-white shadow">
-                   <div className="h-3 w-3 rounded-full bg-indigo-600" />
-                 </div>
-               </div>
-               {/* card */}
-               <div className="rounded-2xl border bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
-                 <div className="text-[11px] font-semibold uppercase tracking-wide text-indigo-600">
-                   {m.date}
-                 </div>
-                 <div className="mt-1 text-sm text-gray-900 leading-6">
-                   {m.label}
-                 </div>
-               </div>
-             </div>
-           </div>
-         ))}
-       </div>
-     </div>
-   </div>
- );
+  const chunk = <T,>(arr: T[], size: number): T[][] => {
+    const out: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+  };
+
+  const rows = chunk(milestones, maxPerRow);
+
+  return (
+    <div className="space-y-8">
+      {rows.map((row, rIdx) => {
+        const isReverse = rIdx % 2 === 1; // snake: 1ère ligne L→R, 2ème R→L, etc.
+        const view = isReverse ? [...row].reverse() : row;
+        return (
+          <div key={`row-${rIdx}`} className="relative">
+            {/* Piste dégradée */}
+            <div
+              className={`pointer-events-none absolute left-0 right-0 top-8 h-2 rounded-full ${
+                isReverse
+                  ? 'bg-gradient-to-l from-indigo-500 via-sky-500 to-fuchsia-500'
+                  : 'bg-gradient-to-r from-indigo-500 via-sky-500 to-fuchsia-500'
+              }`}
+            />
+            {/* Pointe de flèche en fin de ligne */}
+            <div
+              className={`pointer-events-none absolute top-[26px] w-0 h-0 border-t-[12px] border-b-[12px] border-l-[16px] border-t-transparent border-b-transparent ${
+                isReverse
+                  ? 'border-l-indigo-500 -scale-x-100 left-0'
+                  : 'border-l-fuchsia-500 right-0'
+              }`}
+            />
+
+            {/* Grille de cartes – s'adapte à la largeur sans overflow */}
+            <div
+              className="grid gap-8"
+              style={{
+                gridTemplateColumns: `repeat(${view.length}, minmax(180px, 1fr))`,
+              }}
+            >
+              {view.map((m) => (
+                <div key={m.id} className="relative pt-12">
+                  {/* Repère (dot) aligné sur la piste */}
+                  <div className="absolute left-1/2 top-8 -translate-x-1/2">
+                    <div className="h-3 w-3 rounded-full bg-white ring-4 ring-white shadow">
+                      <div className="h-3 w-3 rounded-full bg-indigo-600" />
+                    </div>
+                  </div>
+                  {/* Carte milestone */}
+                  <div className="rounded-2xl border bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-indigo-600">
+                      {m.date}
+                    </div>
+                    <div className="mt-1 text-sm text-gray-900 leading-6">
+                      {m.label}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
