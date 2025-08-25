@@ -1,7 +1,7 @@
 // src/components/preparation/Step2CompanyIntel.tsx
 import React, { useState } from 'react';
 import { aiService, TopNewsItem } from '@/lib/aiService';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface Step2CompanyIntelProps {
   data: {
@@ -110,20 +110,80 @@ export default function Step2CompanyIntel({ data, onUpdate, jobData, companyName
 }
 
 function ArrowTimeline({ items }: { items: string[] }) {
-  // items attendus : ["YYYY – évènement", ...]
-  return (
-    <div className="relative overflow-x-auto pb-4">
-      <div className="relative flex items-center gap-8 pr-10">
-        {items.map((text, i) => (
-          <div key={i} className="relative min-w-[220px]">
-            <div className="h-2 bg-gray-200 rounded-full" />
-            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-white px-3 py-1 rounded-xl shadow">
-              <span className="text-xs font-medium">{text}</span>
-            </div>
-          </div>
-        ))}
-        <div className="w-0 h-0 border-t-8 border-b-8 border-l-8 border-t-transparent border-b-transparent border-l-gray-300" />
-      </div>
-    </div>
-  );
+ // items attendus : ["YYYY – évènement", ...]
+ const containerRef = React.useRef<HTMLDivElement>(null);
+
+ const milestones = (items || []).map((raw, idx) => {
+   const s = String(raw || '').trim();
+   // Parse "YYYY – label" or "YYYY-MM – label"
+   const m = s.match(/^(\d{4}(?:[-/]\d{2})?)\s*[–-]\s*(.+)$/);
+   const date = m ? m[1] : s.slice(0, 7);
+   const label = m ? m[2] : s;
+   return { id: `${idx}-${date}`, date, label };
+ });
+
+ const scroll = (dir: number) => {
+   const el = containerRef.current;
+   if (!el) return;
+   const amt = Math.min(600, el.clientWidth * 0.9);
+   el.scrollBy({ left: amt * dir, behavior: 'smooth' });
+ };
+
+ return (
+   <div className="relative">
+     {/* Controls */}
+     <div className="mb-3 flex justify-end gap-2">
+       <button
+         type="button"
+         onClick={() => scroll(-1)}
+         className="inline-flex items-center rounded-lg border px-2 py-1 text-sm text-gray-700 hover:bg-gray-50"
+         aria-label="Scroll left"
+       >
+         <ChevronLeft className="h-4 w-4" />
+       </button>
+       <button
+         type="button"
+         onClick={() => scroll(1)}
+         className="inline-flex items-center rounded-lg border px-2 py-1 text-sm text-gray-700 hover:bg-gray-50"
+         aria-label="Scroll right"
+       >
+         <ChevronRight className="h-4 w-4" />
+       </button>
+     </div>
+     
+     {/* Track + Arrow head */}
+     <div
+       ref={containerRef}
+       className="relative overflow-x-auto snap-x snap-mandatory pb-8"
+     >
+       <div className="relative flex items-start gap-10 min-w-max pr-14">
+         {/* gradient track */}
+         <div className="pointer-events-none absolute left-0 right-8 top-7 h-2 rounded-full bg-gradient-to-r from-indigo-500 via-sky-500 to-fuchsia-500" />
+         {/* arrow head */}
+         <div className="pointer-events-none absolute right-0 top-[18px] w-0 h-0 border-t-[12px] border-b-[12px] border-l-[16px] border-t-transparent border-b-transparent border-l-fuchsia-500" />
+         {milestones.map((m, i) => (
+           <div key={m.id} className="snap-start min-w-[280px]">
+             <div className="relative pt-10">
+               {/* dot on the track */}
+               <div className="absolute left-1/2 top-[18px] -translate-x-1/2">
+                 <div className="h-3 w-3 rounded-full bg-white ring-4 ring-white shadow">
+                   <div className="h-3 w-3 rounded-full bg-indigo-600" />
+                 </div>
+               </div>
+               {/* card */}
+               <div className="rounded-2xl border bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
+                 <div className="text-[11px] font-semibold uppercase tracking-wide text-indigo-600">
+                   {m.date}
+                 </div>
+                 <div className="mt-1 text-sm text-gray-900 leading-6">
+                   {m.label}
+                 </div>
+               </div>
+             </div>
+           </div>
+         ))}
+       </div>
+     </div>
+   </div>
+ );
 }
