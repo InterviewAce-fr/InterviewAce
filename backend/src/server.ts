@@ -2,7 +2,7 @@
 import 'dotenv/config';
 
 import express from 'express';
-import cors from 'cors';
+import cors, { CorsOptions } from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
@@ -23,8 +23,6 @@ import businessModelRoutes from './routes/businessModel';
 import matchProfileRouter from "./routes/matchProfile";
 import whySuggestionsRouter from "./routes/whySuggestions";
 import topNewsRouter from "./routes/topNews";
-// NEW
-import companyTimelineRouter from "./routes/companyTimeline";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -115,8 +113,6 @@ app.use('/api/ai', businessModelRoutes);
 app.use('/api/ai', matchProfileRouter);
 app.use("/api", whySuggestionsRouter);
 app.use("/api/ai", topNewsRouter);
-// NEW
-app.use("/api/ai", companyTimelineRouter);
 
 // 404 handler
 app.use('*', (req, res) => {

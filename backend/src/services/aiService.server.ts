@@ -315,7 +315,7 @@ export async function generateWhySuggestions(payload: {
     strengths?: string[]; weaknesses?: string[]; opportunities?: string[]; threats?: string[];
     bmc?: {
       valuePropositions?: string[]; customerSegments?: string[];
-      keyActivities?: string[]; keyResources?: string[]; channels?: string[]; 
+      keyActivities?: string[]; keyResources?: string[]; channels?: string[];
     };
   };
 }) {
@@ -689,54 +689,4 @@ ${toolInput}
   return parsed.data.items
     .slice(0, limit)
     .sort((a, b) => (new Date(b.date || 0).getTime() || 0) - (new Date(a.date || 0).getTime() || 0));
-}
-
-/* ------------------------------------------------------------------ */
-/* Step 2 — Company Timeline (NEW)                                    */
-/* ------------------------------------------------------------------ */
-/**
- * Génère une frise chronologique compacte (6–10 jalons) au format JSON strict.
- * Sortie: { items: ["YYYY – évènement", ...] }
- */
-export async function generateCompanyTimeline(payload: {
-  company_name?: string;
-  company_summary?: string;
-  limit?: number;
-}): Promise<string[]> {
-  const { company_name, company_summary, limit = 10 } = payload || {};
-
-  const systemPrompt = `Return STRICT JSON with exactly:
-{"items":["YYYY – label"]}
-
-Rules:
-- 6–10 bullets, French.
-- Each string MUST start with YYYY (or YYYY-MM), then " – ", then a short label (no extra punctuation).
-- Focus on founding, funding, launches, acquisitions/M&A, pivots, IPO, notable partnerships, key leadership changes.
-- Use company_name / company_summary if provided for disambiguation.
-- No markdown, no extra text, no explanations.`;
-
-  const userContent = {
-    company_name: company_name ?? null,
-    company_summary: company_summary ?? null,
-    max: Math.max(6, Math.min(10, limit))
-  };
-
-  const resp = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    temperature: 0.2,
-    max_tokens: 700,
-    response_format: { type: 'json_object' },
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: JSON.stringify(userContent) }
-    ]
-  });
-
-  let parsed: any = {};
-  try { parsed = JSON.parse(resp.choices?.[0]?.message?.content ?? '{}'); } catch { parsed = {}; }
-  const items = Array.isArray(parsed.items) ? parsed.items : [];
-  return items
-    .map((s: any) => String(s || '').trim())
-    .filter(Boolean)
-    .slice(0, userContent.max);
 }
