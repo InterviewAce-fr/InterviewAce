@@ -84,25 +84,51 @@ export default function Step2CompanyIntel({ data, onUpdate, jobData, companyName
 
       {/* Top News (bas) */}
       <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Top News</h3>
-        {Array.isArray(data.topNewsItems) && data.topNewsItems.length > 0 ? (
-          <ul className="list-disc pl-5 space-y-2">
-            {data.topNewsItems.map((n, i) => (
-              <li key={i} className="text-sm">
-                <span className="font-medium">{n.title}</span>
-                {n.source ? <span className="text-gray-500"> — {n.source}</span> : null}
-                <br />
-                <span className="text-gray-700">{n.summary}</span>{' '}
-                {n.url ? (
-                  <a className="text-blue-600 underline" href={n.url} target="_blank" rel="noreferrer">
-                    (read)
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-2xl font-bold text-gray-900">📰 Top News (last 18 months)</h3>
+          {isGenerating && <span className="text-sm text-gray-500">Loading…</span>}
+        </div>
+
+        {(!isGenerating && (!Array.isArray(data.topNewsItems) || data.topNewsItems.length === 0)) && (
+          <div className="text-sm text-gray-500">No major headlines found yet.</div>
+        )}
+
+        {Array.isArray(data.topNewsItems) && data.topNewsItems.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {data.topNewsItems.map((n, idx) => (
+              <article
+                key={idx}
+                className="relative bg-white border rounded-2xl shadow-sm p-6 flex flex-col overflow-hidden"
+              >
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-gray-900 via-blue-600 to-gray-900" />
+                <span className="text-xs text-gray-400 mt-2">
+                  {n.date ? new Date(n.date).toLocaleDateString() : '—'}
+                </span>
+                <h4 className="mt-2 text-xl font-extrabold leading-snug">{n.title}</h4>
+
+                {n.category && (
+                  <span className="mt-1 inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100 w-fit">
+                    {n.category}
+                  </span>
+                )}
+
+                <p className="mt-3 text-sm text-gray-700 flex-1">{n.summary}</p>
+
+                {n.url && (
+                  <a
+                    href={n.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:underline"
+                  >
+                    Read article →
                   </a>
-                ) : null}
-              </li>
+                )}
+
+                {n.source && <span className="mt-2 text-xs text-gray-400">Source: {n.source}</span>}
+              </article>
             ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-gray-600">No news yet. Click “Generate”.</p>
+          </div>
         )}
       </div>
     </div>
@@ -110,18 +136,26 @@ export default function Step2CompanyIntel({ data, onUpdate, jobData, companyName
 }
 
 function ArrowTimeline({ items }: { items: string[] }) {
-  // Parse "YYYY – évènement"
-  const milestones = (items || []).map((raw, idx) => {
-    const s = String(raw || '').trim();
-    const m = s.match(/^(\d{4}(?:[-/]\d{2})?)\s*[–-]\s*(.+)$/);
-    const date = m ? m[1] : s.slice(0, 7);
-    const label = m ? m[2] : s;
-    return { id: `${idx}-${date}`, date, label };
-  });
+  // Parse "YYYY – évènement" + tri descendant (récents -> anciens)
+  const milestones = (items || [])
+    .map((raw, idx) => {
+      const s = String(raw || '').trim();
+      const m = s.match(/^(\d{4}(?:[-/]\d{2})?)\s*[–-]\s*(.+)$/);
+      const date = m ? m[1] : s.slice(0, 7);
+      const label = m ? m[2] : s;
+      const toTs = (d: string) => {
+        const [yy, mm] = d.split(/[-/]/).map((n) => Number(n));
+        const y = Number.isFinite(yy) ? yy : 0;
+        const mo = Number.isFinite(mm) ? mm - 1 : 0;
+        return new Date(y, mo, 1).getTime();
+      };
+      return { id: `${idx}-${date}`, date, label, ts: toTs(date) };
+    })
+    .sort((a, b) => b.ts - a.ts); // plus récent en premier (haut-gauche)
 
   if (milestones.length === 0) return null;
 
-  // Nombre max d'éléments par ligne (responsive-friendly pour A4/écran)
+  // Nombre max d'éléments par ligne (sans scroll, adapté A4/écran)
   const maxPerRow =
     milestones.length <= 5 ? milestones.length : milestones.length <= 10 ? 5 : 6;
 
@@ -135,58 +169,40 @@ function ArrowTimeline({ items }: { items: string[] }) {
 
   return (
     <div className="space-y-8">
-      {rows.map((row, rIdx) => {
-        const isReverse = rIdx % 2 === 1; // snake: 1ère ligne L→R, 2ème R→L, etc.
-        const view = isReverse ? [...row].reverse() : row;
-        return (
-          <div key={`row-${rIdx}`} className="relative">
-            {/* Piste dégradée */}
-            <div
-              className={`pointer-events-none absolute left-0 right-0 top-8 h-2 rounded-full ${
-                isReverse
-                  ? 'bg-gradient-to-l from-indigo-500 via-sky-500 to-fuchsia-500'
-                  : 'bg-gradient-to-r from-indigo-500 via-sky-500 to-fuchsia-500'
-              }`}
-            />
-            {/* Pointe de flèche en fin de ligne */}
-            <div
-              className={`pointer-events-none absolute top-[26px] w-0 h-0 border-t-[12px] border-b-[12px] border-l-[16px] border-t-transparent border-b-transparent ${
-                isReverse
-                  ? 'border-l-indigo-500 -scale-x-100 left-0'
-                  : 'border-l-fuchsia-500 right-0'
-              }`}
-            />
+      {rows.map((row, rIdx) => (
+        <div key={`row-${rIdx}`} className="relative">
+          {/* Piste dégradée (L→R, pas de triangles) */}
+          <div className="pointer-events-none absolute left-0 right-0 top-8 h-2 rounded-full bg-gradient-to-r from-indigo-500 via-sky-500 to-fuchsia-500" />
 
-            {/* Grille de cartes – s'adapte à la largeur sans overflow */}
-            <div
-              className="grid gap-8"
-              style={{
-                gridTemplateColumns: `repeat(${view.length}, minmax(180px, 1fr))`,
-              }}
-            >
-              {view.map((m) => (
-                <div key={m.id} className="relative pt-12">
-                  {/* Repère (dot) aligné sur la piste */}
-                  <div className="absolute left-1/2 top-8 -translate-x-1/2">
-                    <div className="h-3 w-3 rounded-full bg-white ring-4 ring-white shadow">
-                      <div className="h-3 w-3 rounded-full bg-indigo-600" />
-                    </div>
-                  </div>
-                  {/* Carte milestone */}
-                  <div className="rounded-2xl border bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-indigo-600">
-                      {m.date}
-                    </div>
-                    <div className="mt-1 text-sm text-gray-900 leading-6">
-                      {m.label}
-                    </div>
+          {/* Grille L→R (ordre de lecture naturel) */}
+          <div
+            className="grid gap-8"
+            style={{
+              gridTemplateColumns: `repeat(${row.length}, minmax(180px, 1fr))`,
+            }}
+          >
+            {row.map((m) => (
+              <div key={m.id} className="relative pt-12">
+                {/* Repère (dot) aligné sur la piste */}
+                <div className="absolute left-1/2 top-8 -translate-x-1/2">
+                  <div className="h-3 w-3 rounded-full bg-white ring-4 ring-white shadow">
+                    <div className="h-3 w-3 rounded-full bg-indigo-600" />
                   </div>
                 </div>
-              ))}
-            </div>
+                {/* Carte milestone */}
+                <div className="rounded-2xl border bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-indigo-600">
+                    {m.date}
+                  </div>
+                  <div className="mt-1 text-sm text-gray-900 leading-6">
+                    {m.label}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-        );
-      })}
+        </div>
+      ))}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { aiService, TopNewsItem } from '@/lib/aiService';
+import { aiService } from '@/lib/aiService';
 import { GhostList, SectionCard } from '@/components/common';
 import { useDebouncedSave } from '@/components/hooks';
 import { smartSet } from '@/utils/textSet';
@@ -43,10 +43,6 @@ const Step3SWOT: React.FC<Step3Props> = ({ data, onUpdate, companyName }) => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // --- Top News state ---
-  const [news, setNews] = useState<TopNewsItem[]>([]);
-  const [loadingNews, setLoadingNews] = useState(false);
 
   // Si data change (navigate back, load), on resynchronise
   useEffect(() => {
@@ -94,30 +90,6 @@ const Step3SWOT: React.FC<Step3Props> = ({ data, onUpdate, companyName }) => {
     }
   };
 
-  // --- Fetch Top News ---
-  const fetchTopNews = async () => {
-    if (!companyName) return;
-    try {
-      setError(null);
-      setLoadingNews(true);
-      const n = await aiService.getTopNews({ company_name: companyName, months: 18, limit: 3 });
-      setNews(Array.isArray(n) ? n : []);
-    } catch (e: any) {
-      console.error('[TopNews] UI error', e);
-      setError(e?.message || 'Erreur lors de la récupération des news.');
-    } finally {
-      setLoadingNews(false);
-    }
-  };
-
-  // Auto-fetch dès que companyName est dispo (et pas déjà chargé)
-  useEffect(() => {
-    if (companyName && news.length === 0 && !loadingNews) {
-      fetchTopNews();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyName]);
-
   return (
     <div className="max-w-7xl mx-auto p-6">
       {/* Header */}
@@ -142,20 +114,6 @@ const Step3SWOT: React.FC<Step3Props> = ({ data, onUpdate, companyName }) => {
                 </svg>
               )}
               Generate
-            </button>
-
-            <button
-              onClick={fetchTopNews}
-              disabled={loadingNews || !companyName}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-black disabled:opacity-50"
-              title={companyName ? 'Refresh headlines' : 'Company name required'}
-            >
-              {loadingNews ? (
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                </svg>
-              ) : 'Get Top News'}
             </button>
           </div>
           {error && <span className="text-sm text-red-600">{error}</span>}
@@ -192,58 +150,7 @@ const Step3SWOT: React.FC<Step3Props> = ({ data, onUpdate, companyName }) => {
           </SectionCard>
         ))}
       </div>
-
-      {/* Top News – style "Une de journal" */}
-      <div className="mt-12">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-2xl font-bold text-gray-900">📰 Top News (last 18 months)</h3>
-          {loadingNews && <span className="text-sm text-gray-500">Loading…</span>}
-        </div>
-
-        {!loadingNews && news.length === 0 && (
-          <div className="text-sm text-gray-500">No major headlines found yet.</div>
-        )}
-
-        {news.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {news.map((n, idx) => (
-              <article
-                key={idx}
-                className="relative bg-white border rounded-2xl shadow-sm p-6 flex flex-col overflow-hidden"
-              >
-                {/* Bandeau fin haut pour l'effet presse */}
-                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-gray-900 via-blue-600 to-gray-900" />
-                <span className="text-xs text-gray-400 mt-2">
-                  {n.date ? new Date(n.date).toLocaleDateString() : '—'}
-                </span>
-                <h4 className="mt-2 text-xl font-extrabold leading-snug">{n.title}</h4>
-
-                {n.category && (
-                  <span className="mt-1 inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100 w-fit">
-                    {n.category}
-                  </span>
-                )}
-
-                <p className="mt-3 text-sm text-gray-700 flex-1">{n.summary}</p>
-
-                {n.url && (
-                  <a
-                    href={n.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:underline"
-                  >
-                    Read article →
-                  </a>
-                )}
-
-                {n.source && <span className="mt-2 text-xs text-gray-400">Source: {n.source}</span>}
-              </article>
-            ))}
-          </div>
-        )}
-      </div>
-
+      
       {/* Tips */}
       <div className="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
         <h4 className="font-semibold text-gray-800 mb-2">💡 Tips for Company Strategy Analysis</h4>
