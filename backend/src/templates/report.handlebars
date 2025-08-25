@@ -53,6 +53,16 @@
     ul{margin:6px 0 2px 0;padding-left:1.05em} /* puces compactes */
     .section{margin:18px 0;page-break-inside:avoid}
 
+    /* Timeline (style BI) */
+    .timeline{position:relative;margin-left:2px;padding-left:18px}
+    .timeline:before{content:'';position:absolute;left:6px;top:0;bottom:0;width:2px;background:var(--line)}
+    .timeline-item{position:relative;display:flex;gap:12px;margin:12px 0}
+    .timeline-dot{position:absolute;left:-1px;top:6px;width:10px;height:10px;border-radius:50%;background:var(--brand)}
+    .timeline-content{margin-left:8px}
+    .timeline-text{font-size:0.95rem;line-height:1.6;color:var(--ink)}
+    .meta{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#4f46e5}
+
+    /* News */
     .news{display:grid;gap:14px}
     .news-3{grid-template-columns:repeat(3,1fr)}
     .news .item{position:relative;background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:var(--shadow)}
@@ -61,6 +71,7 @@
     .news .meta{font-size:12px;color:var(--muted)}
     .tag{display:inline-block;font-size:11px;border:1px solid #e9d5ff;color:#7c3aed;background:#faf5ff;border-radius:999px;padding:2px 8px}
 
+    /* KPIs */
     .kpi{display:flex;gap:8px;align-items:center}
     .kpi .dot{width:10px;height:10px;border-radius:999px}
     .kpi.green .dot{background:var(--green)}
@@ -82,17 +93,31 @@
       </div>
     </div>
 
-    <!-- Company Intelligence (AVANT Business model) -->
-    {{#if (or (notEmpty company.timeline) (or (notEmpty company.topNews) (notEmpty company.competitors)))}}
+    <!-- Company Intelligence (timeline + news) -->
+    {{#if (or (notEmpty company.timeline) (notEmpty company.topNews))}}
     <div class="section">
       <h2>📊 Company intelligence</h2>
 
+      {{!-- Timeline (objet {date,label} OU chaîne simple) --}}
       {{#if (notEmpty company.timeline)}}
       <div class="card" style="margin-bottom:10px">
         <h3>Timeline</h3>
-        <ul>
-          {{#each company.timeline}}<li>{{this}}</li>{{/each}}
-        </ul>
+        <div class="timeline">
+          {{#each company.timeline}}
+            <div class="timeline-item">
+              <div class="timeline-dot"></div>
+              <div class="timeline-content">
+                {{#if date}}
+                  <div class="meta">{{date}}</div>
+                  <div class="timeline-text">{{label}}</div>
+                {{else}}
+                  {{!-- Fallback si c'est une string --}}
+                  <div class="timeline-text">{{this}}</div>
+                {{/if}}
+              </div>
+            </div>
+          {{/each}}
+        </div>
       </div>
       {{/if}}
 
@@ -112,36 +137,6 @@
           </article>
           {{/each}}
         </div>
-      </div>
-      {{/if}}
-
-      {{#if (notEmpty company.competitors)}}
-      <div class="card" style="margin-bottom:10px">
-        <h3>Competitors</h3>
-        <table class="table">
-          <thead>
-            <tr><th>Name</th><th>Segment</th><th>Country</th><th>Size</th><th>Diff.</th><th>Link</th></tr>
-          </thead>
-          <tbody>
-          {{#each company.competitors}}
-            <tr>
-              <td>{{name}}</td>
-              <td>{{segment}}</td>
-              <td>{{country}}</td>
-              <td>{{relative_size}}</td>
-              <td>
-                {{#if (notEmpty differentiators)}}
-                  <ul style="margin:0;padding-left:1.1em">
-                    {{#each differentiators}}<li>{{this}}</li>{{/each}}
-                  </ul>
-                {{else}}—
-                {{/if}}
-              </td>
-              <td>{{#if url}}<a href="{{url}}">{{url}}</a>{{else}}—{{/if}}</td>
-            </tr>
-          {{/each}}
-          </tbody>
-        </table>
       </div>
       {{/if}}
     </div>
@@ -218,8 +213,8 @@
     </div>
     {{/if}}
 
-    <!-- Strategy (ex-SWOT) -->
-    {{#if strategy}}
+    <!-- Strategy (SWOT) -->
+    {{#if (or (notEmpty strategy.strengths) (notEmpty strategy.weaknesses) (notEmpty strategy.opportunities) (notEmpty strategy.threats))}}
     <div class="section">
       <h2>🧭 Company strategy</h2>
       <div class="grid grid-4">
@@ -247,6 +242,39 @@
             <ul>{{#each strategy.threats}}<li>{{this}}</li>{{/each}}</ul>
           {{else}}<div class="small muted">—</div>{{/if}}
         </div>
+      </div>
+    </div>
+    {{/if}}
+
+    <!-- Competitors (section dédiée) -->
+    {{#if (notEmpty company.competitors)}}
+    <div class="section">
+      <h2>🆚 Competitors</h2>
+      <div class="card">
+        <table class="table">
+          <thead>
+            <tr><th>Name</th><th>Segment</th><th>Country</th><th>Size</th><th>Diff.</th><th>Link</th></tr>
+          </thead>
+          <tbody>
+          {{#each company.competitors}}
+            <tr>
+              <td>{{name}}</td>
+              <td>{{segment}}</td>
+              <td>{{country}}</td>
+              <td>{{relative_size}}</td>
+              <td>
+                {{#if (notEmpty differentiators)}}
+                  <ul style="margin:0;padding-left:1.1em">
+                    {{#each differentiators}}<li>{{this}}</li>{{/each}}
+                  </ul>
+                {{else}}—
+                {{/if}}
+              </td>
+              <td>{{#if url}}<a href="{{url}}">{{url}}</a>{{else}}—{{/if}}</td>
+            </tr>
+          {{/each}}
+          </tbody>
+        </table>
       </div>
     </div>
     {{/if}}
@@ -283,7 +311,7 @@
     {{/if}}
 
     <!-- The Why -->
-    {{#if why}}
+    {{#if (or (notEmpty why.whyCompany) (notEmpty why.whyRole) (notEmpty why.whyYou))}}
     <div class="section">
       <h2>❓ The why</h2>
       <div class="grid grid-2">
@@ -310,13 +338,14 @@
     {{/if}}
 
     <!-- Interview Q&A -->
-    {{#if interview}}
+    {{#if (or (notEmpty interview.questionsAndAnswers) (notEmpty interview.questionsForCandidate) (notEmpty interview.questionsForCompany))}}
     <div class="section">
       <h2>💬 Interview questions & answers</h2>
 
-      {{#if (notEmpty interview.questionsForCandidate)}}
+      {{!-- Support both keys: questionsAndAnswers (Q→A) and questionsForCandidate --}}
+      {{#if (or (notEmpty interview.questionsAndAnswers) (notEmpty interview.questionsForCandidate))}}
         <h3>Company → Candidate</h3>
-        {{#each interview.questionsForCandidate}}
+        {{#each (coalesce interview.questionsAndAnswers interview.questionsForCandidate)}}
           <div class="card" style="margin:8px 0">
             <div><strong>Q.</strong> {{question}}</div>
             {{#if answer}}<div style="margin-top:6px"><strong>A.</strong> {{answer}}</div>{{/if}}
