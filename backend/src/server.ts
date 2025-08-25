@@ -24,6 +24,7 @@ import matchProfileRouter from "./routes/matchProfile";
 import whySuggestionsRouter from "./routes/whySuggestions";
 import topNewsRouter from "./routes/topNews";
 import companyTimelineRouter from "./routes/companyTimeline";
+import competitorsRouter from "./routes/competitors";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -115,6 +116,7 @@ app.use('/api/ai', matchProfileRouter);
 app.use("/api", whySuggestionsRouter);
 app.use("/api/ai", topNewsRouter);
 app.use("/api/ai", companyTimelineRouter);
+app.use("/api/ai", competitorsRouter);
 
 // 404 handler
 app.use('*', (req, res) => {

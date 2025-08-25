@@ -85,6 +85,15 @@ export interface TopNewsItem {
   category?: string;
 }
 
+export interface CompetitorItem {
+  name: string;
+  country: string;
+  relative_size: 'much smaller' | 'smaller' | 'similar size' | 'bigger' | 'much bigger';
+  differentiators: string[]; // <= 3
+  segment?: string;
+  url?: string;
+}
+
 class AIService {
 
   async analyzeJobFromUrl(_url: string): Promise<JobAnalysisResult> {
@@ -351,6 +360,36 @@ class AIService {
     }
 
     const d = await r.json() as { items: string[] };
+    return Array.isArray(d.items) ? d.items : [];
+  }
+
+
+  async getCompetitors(params: {
+    company_name?: string;
+    company_summary?: string;
+    limit?: number;
+  }): Promise<CompetitorItem[]> {
+    const headers = await authHeaders();
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 20_000);
+    let r: Response;
+    try {
+      r = await fetch(api('/ai/competitors'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          company_name: params.company_name,
+          company_summary: params.company_summary,
+          limit: params.limit ?? 6,
+        }),
+        signal: ctrl.signal
+      });
+    } finally { clearTimeout(t); }
+    if (!r.ok) {
+      try { const j = await r.clone().json(); throw new Error(j?.error || 'competitors failed'); }
+      catch { throw new Error(await r.text()); }
+    }
+    const d = await r.json() as { items: CompetitorItem[] };
     return Array.isArray(d.items) ? d.items : [];
   }
 }

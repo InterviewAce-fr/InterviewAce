@@ -1,6 +1,6 @@
 // src/components/preparation/Step2CompanyIntel.tsx
 import React, { useState } from 'react';
-import { aiService, TopNewsItem } from '@/lib/aiService';
+import { aiService, TopNewsItem, CompetitorItem } from '@/lib/aiService';
 import { Loader2 } from 'lucide-react';
 
 interface Step2CompanyIntelProps {
@@ -9,6 +9,7 @@ interface Step2CompanyIntelProps {
     company_summary?: string;
     companyTimeline?: string[];   // ["YYYY – évènement", ...]
     topNewsItems?: TopNewsItem[]; // même format que ta route /ai/top-news
+    competitors?: CompetitorItem[];
   };
   onUpdate: (data: any) => void;
   jobData?: any
@@ -41,7 +42,19 @@ export default function Step2CompanyIntel({ data, onUpdate, jobData, companyName
         limit: 5,
       });
 
-      onUpdate({ ...data, companyTimeline: timeline, topNewsItems: news });
+      // 3) Competitors
+      const competitors = await aiService.getCompetitors({
+        company_name: derivedName,
+        company_summary: derivedSummary,
+        limit: 6,
+      });
+
+      onUpdate({
+        ...data,
+        companyTimeline: timeline,
+        topNewsItems: news,
+        competitors,
+      });
     } catch (e) {
       console.error('[CompanyIntel] generate error', e);
       // pas de UI nouvelle : on reste minimal
@@ -81,6 +94,45 @@ export default function Step2CompanyIntel({ data, onUpdate, jobData, companyName
           <p className="text-sm text-gray-600">No timeline yet. Click “Generate”.</p>
         )}
       </div>
+
+      {/* Competitive Landscape (milieu) */}
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Competitive Landscape</h3>
+        {Array.isArray(data.competitors) && data.competitors.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {data.competitors.map((c, i) => (
+              <article key={i} className="rounded-2xl border bg-white p-5 shadow-sm">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h4 className="text-base font-semibold text-gray-900">{c.name || '—'}</h4>
+                    <div className="text-xs text-gray-500">{c.country || '—'}{c.segment ? ` • ${c.segment}` : ''}</div>
+                  </div>
+                  <span className="text-[11px] px-2 py-0.5 rounded-full border bg-gray-50 text-gray-700">
+                    {c.relative_size}
+                  </span>
+                </div>
+                {Array.isArray(c.differentiators) && c.differentiators.length > 0 && (
+                  <ul className="mt-3 list-disc pl-5 text-sm text-gray-700 space-y-1">
+                    {c.differentiators.slice(0,3).map((d, k) => <li key={k}>{d}</li>)}
+                  </ul>
+                )}
+                {c.url && (
+                  <a
+                    href={c.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex text-sm text-blue-700 hover:underline"
+                  >
+                    Visit site →
+                  </a>
+                )}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-600">No competitors yet. Click “Generate”.</p>
+        )}
+      </div>      
 
       {/* Top News (bas) */}
       <div className="bg-white rounded-lg shadow-sm border p-6">

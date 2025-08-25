@@ -739,3 +739,63 @@ Rules:
   const items = Array.isArray(parsed.items) ? parsed.items : [];
   return items.map((s: any) => String(s || '').trim()).filter(Boolean).slice(0, userContent.max);
 }
+
+
+/* ------------------------------------------------------------------ */
+/* Step 2 — Competitors                                               */
+/* ------------------------------------------------------------------ */
+/**
+ * Retourne un tableau d'objets concurrents:
+ * [{ name, country, relative_size, differentiators[], segment?, url? }]
+ */
+export async function generateCompetitors(payload: {
+  company_name?: string;
+  company_summary?: string;
+  limit?: number;
+}) {
+  const { company_name, company_summary, limit = 6 } = payload || {};
+
+  const systemPrompt = `Return STRICT JSON:
+{"items":[{"name":"","country":"","relative_size":"much smaller|smaller|similar size|bigger|much bigger","differentiators":[],"segment":"","url":""}]}
+Rules:
+- 4 to 8 items. Use French labels if the input seems French, else English.
+- "relative_size" must be one of: "much smaller","smaller","similar size","bigger","much bigger".
+- "differentiators": max 3 short bullets, comparing OUR company vs the competitor (why we win / differ).
+- Keep it concise, no marketing fluff, no markdown.
+- Include "segment" when relevant (e.g., SMB payroll, enterprise HCM, logistics SaaS, etc.).
+- "url": official site or best source.
+Use company_name/company_summary to stay on-topic.`;
+
+  const userContent = {
+    company_name: company_name ?? null,
+    company_summary: company_summary ?? null,
+    max: Math.max(4, Math.min(8, limit))
+  };
+
+  const resp = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    temperature: 0.2,
+    max_tokens: 1000,
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: JSON.stringify(userContent) }
+    ]
+  });
+
+  let parsed: any = {};
+  try { parsed = JSON.parse(resp.choices?.[0]?.message?.content ?? '{}'); } catch { parsed = {}; }
+  const items = Array.isArray(parsed.items) ? parsed.items : [];
+
+  // Normalisation défensive
+  const norm = (v: any) => (typeof v === 'string' ? v.trim() : '');
+  const allowed = new Set(['much smaller','smaller','similar size','bigger','much bigger']);
+  return items.slice(0, userContent.max).map((c: any) => ({
+    name: norm(c?.name),
+    country: norm(c?.country),
+    relative_size: allowed.has(String(c?.relative_size)) ? String(c?.relative_size) : 'similar size',
+    differentiators: Array.isArray(c?.differentiators) ? c.differentiators.map((x: any) => norm(x)).filter(Boolean).slice(0,3) : [],
+    segment: norm(c?.segment),
+    url: norm(c?.url),
+  }));
+}
